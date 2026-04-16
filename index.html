@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#2E7D32" />
+<title>AA Events Calendar</title>
+<style>
+  /* ============================================================
+     Open-source vanilla CSS. Mobile-first, dark-mode aware.
+     ============================================================ */
+  :root {
+    --bg:           #f5f7fa;
+    --surface:      #ffffff;
+    --surface-alt:  #f1f5f9;
+    --text:         #0f172a;
+    --text-muted:   #64748b;
+    --border:       #e2e8f0;
+    --primary:      #2E7D32;
+    --primary-ink:  #ffffff;
+    --danger:       #dc2626;
+    --warning:      #f59e0b;
+    --radius-sm:    8px;
+    --radius:       14px;
+    --radius-lg:    20px;
+    --shadow-sm:    0 1px 2px rgba(15,23,42,.06);
+    --shadow:       0 4px 12px rgba(15,23,42,.08);
+    --shadow-lg:    0 20px 40px rgba(15,23,42,.18);
+    --safe-bottom:  env(safe-area-inset-bottom, 0px);
+    --safe-top:     env(safe-area-inset-top, 0px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:          #0b1220;
+      --surface:     #111a2e;
+      --surface-alt: #1a2540;
+      --text:        #e2e8f0;
+      --text-muted:  #94a3b8;
+      --border:      #25324f;
+      --shadow-sm:   0 1px 2px rgba(0,0,0,.4);
+      --shadow:      0 6px 18px rgba(0,0,0,.5);
+      --shadow-lg:   0 20px 40px rgba(0,0,0,.6);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+  }
+
+  button { font: inherit; color: inherit; cursor: pointer; border: none; background: none; }
+  input, select { font: inherit; color: inherit; }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---------- App shell ---------- */
+  .app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: calc(var(--safe-top) + 12px) 16px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: var(--shadow-sm);
+  }
+  .topbar h1 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0;
+    flex: 1;
+    letter-spacing: -0.01em;
+  }
+  .topbar h1 .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    background: var(--primary);
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .icon-btn {
+    width: 40px; height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    color: var(--text);
+    transition: background .15s;
+    position: relative;
+  }
+  .icon-btn:hover, .icon-btn:active { background: var(--surface-alt); }
+  .icon-btn svg { width: 22px; height: 22px; }
+  .badge {
+    position: absolute;
+    top: 4px; right: 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--primary);
+    color: var(--primary-ink);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ---------- View tabs ---------- */
+  .view-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .view-tabs::-webkit-scrollbar { display: none; }
+  .view-tabs button {
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.88rem;
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+  }
+  .view-tabs button.active {
+    background: var(--primary);
+    color: var(--primary-ink);
+  }
+
+  /* ---------- Main ---------- */
+  main {
+    flex: 1;
+    padding: 12px;
+    padding-bottom: calc(80px + var(--safe-bottom));
+    max-width: 1100px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* ---------- Agenda / list view ---------- */
+  .agenda { display: flex; flex-direction: column; gap: 18px; }
+  .agenda-group h2 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin: 0 4px 8px;
+  }
+  .event-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 14px 14px 14px 18px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    display: flex;
+    gap: 12px;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .15s;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .event-card:active { transform: scale(0.985); }
+  .event-card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 5px;
+    background: var(--event-color, var(--primary));
+  }
+  .event-date {
+    flex-shrink: 0;
+    width: 50px;
+    text-align: center;
+    padding-top: 2px;
+  }
+  .event-date .mon {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--event-color, var(--primary));
+  }
+  .event-date .day {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-top: 2px;
+  }
+  .event-date .recurring-icon {
+    font-size: 1.3rem;
+    color: var(--event-color, var(--primary));
+  }
+  .event-body { flex: 1; min-width: 0; }
+  .event-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .event-meta {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    align-items: center;
+  }
+  .event-meta span { display: inline-flex; align-items: center; gap: 4px; }
+  .event-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: var(--surface-alt);
+    color: var(--text-muted);
+  }
+  .tag.cat {
+    background: var(--event-color, var(--primary));
+    color: #fff;
+    opacity: 0.92;
+  }
+  .tag.tentative { background: rgba(245,158,11,.15); color: var(--warning); }
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state svg { width: 48px; height: 48px; opacity: 0.4; margin-bottom: 12px; }
+
+  /* ---------- Month calendar view ---------- */
+  .cal-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 10px;
+  }
+  .cal-nav h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+  }
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    background: var(--surface);
+    padding: 8px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+  }
+  .cal-dow {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 6px 0;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+  .cal-cell {
+    aspect-ratio: 1 / 1;
+    background: var(--surface-alt);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    font-size: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+    cursor: pointer;
+    min-height: 54px;
+  }
+  .cal-cell.other-month { opacity: 0.35; }
+  .cal-cell.today { outline: 2px solid var(--primary); }
+  .cal-cell .cal-num {
+    font-weight: 700;
+    font-size: 0.82rem;
+  }
+  .cal-cell .cal-dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-top: auto;
+  }
+  .cal-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--dot, var(--primary));
+  }
+  .cal-cell.has-events:hover { background: var(--border); }
+
+  /* ---------- Filter drawer ---------- */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+
+  .drawer {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-height: 85vh;
+    background: var(--surface);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    z-index: 60;
+    transform: translateY(100%);
+    transition: transform .25s ease-out;
+    padding: 16px 16px calc(16px + var(--safe-bottom));
+    box-shadow: var(--shadow-lg);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .drawer.open { transform: translateY(0); }
+  .drawer .handle {
+    width: 40px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 8px;
+  }
+  .drawer h3 {
+    font-size: 1.15rem;
+    margin: 0 0 4px;
+  }
+
+  .filter-group h4 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+  }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1.5px solid transparent;
+    transition: all .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chip.active {
+    background: var(--primary);
+    color: var(--primary-ink);
+    border-color: var(--primary);
+  }
+  .chip .swatch {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--swatch, var(--primary));
+  }
+  .chip.active .swatch { background: #fff; }
+
+  .drawer-actions {
+    display: flex;
+    gap: 10px;
+    padding-top: 8px;
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    padding-bottom: 4px;
+  }
+  .btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    transition: filter .15s;
+  }
+  .btn-primary { background: var(--primary); color: var(--primary-ink); }
+  .btn-ghost { background: var(--surface-alt); color: var(--text); }
+  .btn:hover { filter: brightness(1.05); }
+
+  /* ---------- Event detail sheet ---------- */
+  .sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-height: 92vh;
+    background: var(--surface);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    z-index: 60;
+    transform: translateY(100%);
+    transition: transform .25s ease-out;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .sheet.open { transform: translateY(0); }
+  .sheet-header {
+    padding: 18px 18px 14px;
+    background: var(--event-color, var(--primary));
+    color: #fff;
+    position: relative;
+  }
+  .sheet-header .handle {
+    width: 40px; height: 4px;
+    background: rgba(255,255,255,.5);
+    border-radius: 2px;
+    margin: 0 auto 10px;
+  }
+  .sheet-header h3 {
+    font-size: 1.2rem;
+    margin: 0 30px 6px 0;
+    font-weight: 700;
+  }
+  .sheet-header .sub {
+    font-size: 0.85rem;
+    opacity: 0.9;
+  }
+  .sheet-close {
+    position: absolute;
+    top: 16px; right: 14px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.2);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sheet-body {
+    padding: 16px 18px calc(18px + var(--safe-bottom));
+    overflow-y: auto;
+    flex: 1;
+  }
+  .detail-row {
+    display: flex;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.92rem;
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row .lbl {
+    flex-shrink: 0;
+    width: 80px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-top: 2px;
+  }
+  .detail-row .val { flex: 1; word-break: break-word; }
+  .detail-row .val a { word-break: break-all; }
+
+  /* ---------- Desktop adjustments ---------- */
+  @media (min-width: 720px) {
+    main { padding: 24px; }
+    .topbar { padding-left: 24px; padding-right: 24px; }
+    .topbar h1 { font-size: 1.25rem; }
+    .view-tabs { padding-left: 24px; padding-right: 24px; }
+    .agenda { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+    .agenda-group { flex: 1 1 320px; min-width: 320px; }
+    .cal-cell { min-height: 90px; font-size: 0.85rem; padding: 6px; }
+    .cal-cell .cal-num { font-size: 1rem; }
+    .cal-dot { width: 8px; height: 8px; }
+  }
+
+  @media (min-width: 960px) {
+    .drawer {
+      max-width: 440px;
+      right: auto;
+      border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+      max-height: 100vh;
+      height: 100%;
+      transform: translateX(-100%);
+    }
+    .drawer.open { transform: translateX(0); }
+    .sheet {
+      max-width: 560px;
+      left: 50%;
+      bottom: 50%;
+      transform: translate(-50%, 120%);
+      border-radius: var(--radius-lg);
+      max-height: 80vh;
+    }
+    .sheet.open { transform: translate(-50%, 50%); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <h1><span class="dot"></span>AA Events</h1>
+    <button type="button" class="icon-btn" id="btn-today" title="Jump to today" aria-label="Today">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </button>
+    <button type="button" class="icon-btn" id="btn-filter" title="Filters" aria-label="Filters">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      <span class="badge" id="filter-badge" hidden>0</span>
+    </button>
+  </header>
+
+  <nav class="view-tabs" role="tablist">
+    <button type="button" role="tab" data-view="upcoming" class="active">Upcoming</button>
+    <button type="button" role="tab" data-view="recurring">Recurring</button>
+    <button type="button" role="tab" data-view="calendar">Calendar</button>
+    <button type="button" role="tab" data-view="all">All</button>
+  </nav>
+
+  <main id="main"></main>
+
+</div>
+
+<!-- Filter drawer -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="handle"></div>
+  <h3>Filters</h3>
+
+  <div class="filter-group">
+    <h4>Category</h4>
+    <div class="chip-row" id="filter-categories"></div>
+  </div>
+
+  <div class="filter-group">
+    <h4>Format</h4>
+    <div class="chip-row" id="filter-formats"></div>
+  </div>
+
+  <div class="filter-group">
+    <h4>Language</h4>
+    <div class="chip-row" id="filter-languages"></div>
+  </div>
+
+  <div class="filter-group">
+    <h4>Status</h4>
+    <div class="chip-row" id="filter-statuses"></div>
+  </div>
+
+  <div class="drawer-actions">
+    <button type="button" class="btn btn-ghost" id="btn-clear">Clear all</button>
+    <button type="button" class="btn btn-primary" id="btn-apply">Done</button>
+  </div>
+</aside>
+
+<!-- Event detail sheet -->
+<aside class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-header" id="sheet-head">
+    <div class="handle"></div>
+    <button type="button" class="sheet-close" id="sheet-close" aria-label="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <h3 id="sheet-title"></h3>
+    <div class="sub" id="sheet-sub"></div>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+</aside>
+
+<script>
+  /* ---------- Data loading ---------- */
+  const CSV_URL_B64 = 'aHR0cHM6Ly9kb2NzLmdvb2dsZS5jb20vc3ByZWFkc2hlZXRzL2QvZS8yUEFDWC0xdlRiRVF2TWJsYlFjdWcyaGVIMF9sMjRnYXlhSWRWV0hZVVNkLS1NUGFOOEd4dXpPYmNTV3gyNXFHNkEzUlNGS0VzVUFnMGY0S2JER1BUUi9wdWI/Z2lkPTczMzQzNDc5NCZzaW5nbGU9dHJ1ZSZvdXRwdXQ9Y3N2';
+  const CSV_URL = atob(CSV_URL_B64);
+
+  /* Category palette — single source of truth.
+     Override or extend here to retheme the whole calendar. */
+  const CATEGORIES = [
+    { name: 'Assembly',         color: '#6A1B9A', description: 'Area assemblies (Spring/Summer/Fall)' },
+    { name: 'Workshop',         color: '#1976D2', description: 'GV / Grapevine workshops' },
+    { name: 'Conference',       color: '#C62828', description: 'Multi-day conferences' },
+    { name: 'Convention',       color: '#B71C1C', description: 'State / regional conventions' },
+    { name: 'Anniversary',      color: '#F9A825', description: 'Group / area anniversaries' },
+    { name: 'Social',           color: '#F57C00', description: 'Parties and social events' },
+    { name: 'TownHall',         color: '#00897B', description: 'Town hall / open forum meetings' },
+    { name: 'Committee',        color: '#2E7D32', description: 'Committee and chair meetings' },
+    { name: 'District',         color: '#1B5E20', description: 'District business meetings' },
+    { name: 'Group Conscience', color: '#827717', description: 'Group conscience meetings' },
+    { name: 'Community',        color: '#5E35B1', description: 'Community / citywide gatherings' },
+    { name: 'Birthday',         color: '#D81B60', description: 'Group birthday celebrations' },
+    { name: 'Training',         color: '#0277BD', description: 'Bootcamps and trainings' },
+    { name: 'Roundup',          color: '#4527A0', description: 'Roundups' },
+  ];
+  const CATEGORY_COLOR = Object.fromEntries(CATEGORIES.map(c => [c.name, c.color]));
+  const DEFAULT_COLOR = '#2E7D32';
+  const colorFor = (cat, fallback) => CATEGORY_COLOR[cat] || fallback || DEFAULT_COLOR;
+
+  const STATE = {
+    events: [],
+    view: 'upcoming',
+    calCursor: new Date(),
+    filters: { categories: [], formats: [], languages: [], statuses: [] },
+  };
+
+  function parseCSV(text) {
+    const rows = [];
+    let field = '';
+    let row = [];
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i+1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else field += c;
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\n' || c === '\r') {
+          if (field !== '' || row.length) { row.push(field); rows.push(row); row = []; field = ''; }
+          if (c === '\r' && text[i+1] === '\n') i++;
+        } else field += c;
+      }
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    if (!rows.length) return [];
+    const headers = rows.shift();
+    return rows.filter(r => r.some(v => v !== '')).map(r => {
+      const o = {};
+      headers.forEach((h, i) => o[h.trim()] = (r[i] ?? '').trim());
+      return o;
+    });
+  }
+
+  async function loadData() {
+    try {
+      const res = await fetch(CSV_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      STATE.events = parseCSV(text).map(e => ({ ...e, _start: toDate(e.start_date, e.start_time) }));
+    } catch (err) {
+      document.getElementById('main').innerHTML =
+        `<div class="empty-state">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.5" fill="currentColor"/></svg>
+           <p><strong>Unable to load meetings.csv</strong></p>
+           <p>${err.message}</p>
+           <p style="margin-top:10px; font-size:.85rem">If opening from disk, run a local server:<br/>
+           <code>python -m http.server</code></p>
+         </div>`;
+      throw err;
+    }
+  }
+
+  /* ---------- Helpers ---------- */
+  function toDate(d, t) {
+    if (!d) return null;
+    const [y, m, day] = d.split('-').map(Number);
+    const [hh = 0, mm = 0] = (t || '00:00').split(':').map(Number);
+    return new Date(y, m-1, day, hh, mm);
+  }
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function fmtTime(t) {
+    if (!t) return '';
+    const [h, m] = t.split(':').map(Number);
+    const p = h >= 12 ? 'pm' : 'am';
+    const h12 = ((h + 11) % 12) + 1;
+    return m ? `${h12}:${String(m).padStart(2,'0')} ${p}` : `${h12}${p}`;
+  }
+  function fmtDateRange(e) {
+    if (e.recurring === 'true') return e.recurrence_pattern || 'Recurring';
+    const s = toDate(e.start_date, e.start_time);
+    const en = toDate(e.end_date, e.end_time);
+    if (!s) return '';
+    const sStr = `${MONTHS[s.getMonth()]} ${s.getDate()}`;
+    if (en && (en.toDateString() !== s.toDateString())) {
+      return `${sStr} – ${MONTHS[en.getMonth()]} ${en.getDate()}`;
+    }
+    const times = [e.start_time && fmtTime(e.start_time), e.end_time && fmtTime(e.end_time)].filter(Boolean).join(' – ');
+    return times ? `${sStr} · ${times}` : sStr;
+  }
+  function uniq(arr) { return [...new Set(arr.filter(Boolean))]; }
+  const FORMAT_ICONS = {
+    'In-Person': '📍',
+    'Virtual':   '💻',
+    'Hybrid':    '🔀',
+  };
+  const LANG_LABEL = {
+    'English': 'EN',
+    'Spanish': 'ES',
+    'Both':    'EN/ES',
+  };
+
+  /* ---------- Filtering ---------- */
+  function eventPassesFilters(e) {
+    const f = STATE.filters;
+    if (f.categories.length && !f.categories.includes(e.category)) return false;
+    if (f.formats.length    && !f.formats.includes(e.format))     return false;
+    if (f.languages.length  && !f.languages.includes(e.language)) return false;
+    if (f.statuses.length   && !f.statuses.includes(e.status))    return false;
+    return true;
+  }
+  function activeFilterCount() {
+    return Object.values(STATE.filters).reduce((n, a) => n + a.length, 0);
+  }
+
+  /* ---------- Rendering ---------- */
+  function render() {
+    const main = document.getElementById('main');
+    const filtered = STATE.events.filter(eventPassesFilters);
+    if (STATE.view === 'calendar') return renderCalendar(main, filtered);
+    if (STATE.view === 'recurring') return renderList(main, filtered.filter(e => e.recurring === 'true'), 'recurring');
+    if (STATE.view === 'all')       return renderList(main, filtered, 'all');
+    return renderList(main, filtered.filter(e => e.recurring !== 'true' && e._start && e._start >= startOfDay(new Date())), 'upcoming');
+  }
+
+  function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+
+  function renderList(main, events, mode) {
+    if (!events.length) {
+      main.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <p>No events match your filters.</p></div>`;
+      return;
+    }
+
+    if (mode === 'recurring') {
+      main.innerHTML = `<div class="agenda"><div class="agenda-group"><h2>Recurring meetings</h2>${events.map(eventCard).join('')}</div></div>`;
+      return;
+    }
+
+    // Group dated events by month
+    const dated = events.filter(e => e._start).sort((a,b) => a._start - b._start);
+    const recurring = events.filter(e => e.recurring === 'true');
+    const groups = {};
+    dated.forEach(e => {
+      const key = `${e._start.getFullYear()}-${String(e._start.getMonth()).padStart(2,'0')}`;
+      const label = `${MONTHS[e._start.getMonth()]} ${e._start.getFullYear()}`;
+      (groups[key] ??= { label, items: [] }).items.push(e);
+    });
+
+    const groupHTML = Object.values(groups).map(g =>
+      `<div class="agenda-group"><h2>${g.label}</h2>${g.items.map(eventCard).join('')}</div>`
+    ).join('');
+
+    const recurHTML = (mode === 'all' && recurring.length)
+      ? `<div class="agenda-group"><h2>Recurring</h2>${recurring.map(eventCard).join('')}</div>`
+      : '';
+
+    main.innerHTML = `<div class="agenda">${groupHTML}${recurHTML}</div>`;
+  }
+
+  function eventCard(e) {
+    const color = colorFor(e.category, e.category_color);
+    const datePart = e.recurring === 'true'
+      ? `<div class="recurring-icon">↻</div><div class="mon" style="margin-top:2px">${(e.recurrence_pattern||'').split(' ')[0] || 'Every'}</div>`
+      : (e._start
+          ? `<div class="mon">${MONTHS[e._start.getMonth()]}</div><div class="day">${e._start.getDate()}</div>`
+          : `<div class="mon">TBD</div>`);
+    const when = fmtDateRange(e);
+    const loc = e.format === 'Virtual'
+      ? 'Online'
+      : [e.venue_name, e.city].filter(Boolean).join(', ');
+    const tags = [
+      `<span class="tag cat">${escapeHtml(e.category || '')}</span>`,
+      e.format ? `<span class="tag">${FORMAT_ICONS[e.format]||''} ${e.format}</span>` : '',
+      e.language ? `<span class="tag">${LANG_LABEL[e.language]||e.language}</span>` : '',
+      e.status === 'Tentative' ? `<span class="tag tentative">Tentative</span>` : '',
+      e.cost ? `<span class="tag">${escapeHtml(e.cost)}</span>` : '',
+    ].filter(Boolean).join('');
+
+    return `
+      <article class="event-card" data-id="${e.id}" style="--event-color:${color}">
+        <div class="event-date">${datePart}</div>
+        <div class="event-body">
+          <div class="event-title">${escapeHtml(e.title)}</div>
+          <div class="event-meta">
+            <span>🕒 ${escapeHtml(when)}</span>
+            ${loc ? `<span>📍 ${escapeHtml(loc)}</span>` : ''}
+          </div>
+          <div class="event-tags">${tags}</div>
+        </div>
+      </article>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderCalendar(main, events) {
+    const cursor = STATE.calCursor;
+    const y = cursor.getFullYear(), m = cursor.getMonth();
+    const first = new Date(y, m, 1);
+    const startOffset = first.getDay();
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    const today = startOfDay(new Date());
+
+    // Bucket events by yyyy-mm-dd (including multi-day spans)
+    const byDate = {};
+    events.forEach(e => {
+      if (e.recurring === 'true') return;
+      const s = toDate(e.start_date, e.start_time);
+      if (!s) return;
+      const en = toDate(e.end_date, e.end_time) || s;
+      const d = new Date(s); d.setHours(0,0,0,0);
+      const endD = new Date(en); endD.setHours(0,0,0,0);
+      while (d <= endD) {
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        (byDate[key] ??= []).push(e);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+
+    let cellsHTML = DOW.map(d => `<div class="cal-dow">${d}</div>`).join('');
+    const prevDays = new Date(y, m, 0).getDate();
+    for (let i = startOffset - 1; i >= 0; i--) {
+      cellsHTML += `<div class="cal-cell other-month"><div class="cal-num">${prevDays - i}</div></div>`;
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const key = `${y}-${m}-${day}`;
+      const todays = byDate[key] || [];
+      const dots = uniq(todays.map(e => colorFor(e.category, e.category_color)))
+        .slice(0, 4)
+        .map(c => `<span class="cal-dot" style="--dot:${c}"></span>`).join('');
+      const date = new Date(y, m, day);
+      const isToday = date.getTime() === today.getTime();
+      cellsHTML += `<div class="cal-cell ${todays.length?'has-events':''} ${isToday?'today':''}" data-date="${key}">
+        <div class="cal-num">${day}</div>
+        <div class="cal-dots">${dots}</div>
+      </div>`;
+    }
+    const totalCells = startOffset + daysInMonth;
+    const trail = (7 - (totalCells % 7)) % 7;
+    for (let i = 1; i <= trail; i++) {
+      cellsHTML += `<div class="cal-cell other-month"><div class="cal-num">${i}</div></div>`;
+    }
+
+    // Agenda under the calendar: events in the visible month
+    const monthEvents = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const todays = byDate[`${y}-${m}-${day}`] || [];
+      todays.forEach(e => { if (!monthEvents.includes(e)) monthEvents.push(e); });
+    }
+    monthEvents.sort((a,b) => a._start - b._start);
+
+    main.innerHTML = `
+      <div class="cal-nav">
+        <button type="button" class="icon-btn" id="cal-prev" aria-label="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <h2>${MONTHS[m]} ${y}</h2>
+        <button type="button" class="icon-btn" id="cal-next" aria-label="Next month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+      <div class="cal-grid">${cellsHTML}</div>
+      <div style="margin-top:16px" class="agenda">
+        ${monthEvents.length
+            ? `<div class="agenda-group"><h2>This month</h2>${monthEvents.map(eventCard).join('')}</div>`
+            : `<div class="empty-state">No events this month.</div>`}
+      </div>`;
+
+    document.getElementById('cal-prev').onclick = () => { STATE.calCursor = new Date(y, m-1, 1); render(); };
+    document.getElementById('cal-next').onclick = () => { STATE.calCursor = new Date(y, m+1, 1); render(); };
+  }
+
+  /* ---------- Filter drawer UI ---------- */
+  function buildFilters() {
+    const inUse = new Set(STATE.events.map(e => e.category).filter(Boolean));
+    const cats = [
+      ...CATEGORIES.filter(c => inUse.has(c.name)),
+      ...[...inUse].filter(n => !CATEGORY_COLOR[n]).map(n => ({ name: n, color: DEFAULT_COLOR })),
+    ];
+
+    document.getElementById('filter-categories').innerHTML = cats.map(c =>
+      `<button type="button" class="chip" data-group="categories" data-val="${escapeHtml(c.name)}" style="--swatch:${c.color}"><span class="swatch"></span>${escapeHtml(c.name)}</button>`
+    ).join('');
+    document.getElementById('filter-formats').innerHTML = uniq(STATE.events.map(e => e.format)).map(v =>
+      `<button type="button" class="chip" data-group="formats" data-val="${escapeHtml(v)}">${FORMAT_ICONS[v]||''} ${escapeHtml(v)}</button>`
+    ).join('');
+    document.getElementById('filter-languages').innerHTML = uniq(STATE.events.map(e => e.language)).map(v =>
+      `<button type="button" class="chip" data-group="languages" data-val="${escapeHtml(v)}">${escapeHtml(v)}</button>`
+    ).join('');
+    document.getElementById('filter-statuses').innerHTML = uniq(STATE.events.map(e => e.status)).map(v =>
+      `<button type="button" class="chip" data-group="statuses" data-val="${escapeHtml(v)}">${escapeHtml(v)}</button>`
+    ).join('');
+
+    document.querySelectorAll('.drawer .chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const g = btn.dataset.group, v = btn.dataset.val;
+        const list = STATE.filters[g];
+        const i = list.indexOf(v);
+        if (i >= 0) list.splice(i, 1); else list.push(v);
+        btn.classList.toggle('active');
+        updateFilterBadge();
+      });
+    });
+  }
+
+  function updateFilterBadge() {
+    const n = activeFilterCount();
+    const b = document.getElementById('filter-badge');
+    b.textContent = n;
+    b.hidden = n === 0;
+  }
+
+  function syncChipStates() {
+    document.querySelectorAll('.drawer .chip').forEach(btn => {
+      const g = btn.dataset.group, v = btn.dataset.val;
+      btn.classList.toggle('active', STATE.filters[g].includes(v));
+    });
+  }
+
+  /* ---------- Detail sheet ---------- */
+  function openSheet(id) {
+    const e = STATE.events.find(x => x.id === id);
+    if (!e) return;
+    const color = colorFor(e.category, e.category_color);
+    document.getElementById('sheet-head').style.setProperty('--event-color', color);
+    document.getElementById('sheet-title').textContent = e.title;
+    document.getElementById('sheet-sub').textContent = `${e.category || ''} · ${fmtDateRange(e)}`;
+
+    const addressParts = [e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean);
+    const fullAddress = addressParts.join(' ');
+    const mapsLink = fullAddress
+      ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([e.venue_name, fullAddress].filter(Boolean).join(' '))}" target="_blank" rel="noopener">${escapeHtml([e.venue_name, fullAddress].filter(Boolean).join(' — '))}</a>`
+      : '';
+
+    const rows = [
+      ['When', e.recurring === 'true'
+        ? escapeHtml(e.recurrence_pattern || 'Recurring')
+        : `${escapeHtml(fmtDateRange(e))}${e.all_day === 'true' ? ' (all day)' : ''}`],
+      ['Format', `${FORMAT_ICONS[e.format]||''} ${escapeHtml(e.format || '—')}`],
+      ['Language', escapeHtml(e.language || '—')],
+      mapsLink ? ['Where', mapsLink] : null,
+      e.virtual_link ? ['Join', `<a href="${escapeHtml(e.virtual_link)}" target="_blank" rel="noopener">${escapeHtml(e.virtual_platform || 'Link')}</a>`]
+                     : (e.virtual_platform ? ['Platform', escapeHtml(e.virtual_platform)] : null),
+      e.meeting_id ? ['Meeting ID', escapeHtml(e.meeting_id)] : null,
+      e.passcode   ? ['Passcode', escapeHtml(e.passcode)] : null,
+      e.cost       ? ['Cost', escapeHtml(e.cost)] : null,
+      e.status     ? ['Status', escapeHtml(e.status)] : null,
+      e.source_url ? ['Source', `<a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener">Open link</a>`] : null,
+      e.notes      ? ['Notes', escapeHtml(e.notes)] : null,
+    ].filter(Boolean);
+
+    document.getElementById('sheet-body').innerHTML = rows.map(([l,v]) =>
+      `<div class="detail-row"><div class="lbl">${l}</div><div class="val">${v}</div></div>`
+    ).join('');
+
+    document.getElementById('sheet').classList.add('open');
+    document.getElementById('scrim').classList.add('open');
+  }
+  function closeSheet() {
+    document.getElementById('sheet').classList.remove('open');
+    document.getElementById('drawer').classList.remove('open');
+    document.getElementById('scrim').classList.remove('open');
+  }
+
+  /* ---------- Event wiring ---------- */
+  function wire() {
+    // View tabs
+    document.querySelectorAll('.view-tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.view-tabs button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        STATE.view = btn.dataset.view;
+        render();
+      });
+    });
+
+    // Today button
+    document.getElementById('btn-today').addEventListener('click', () => {
+      STATE.calCursor = new Date();
+      if (STATE.view !== 'calendar') {
+        document.querySelectorAll('.view-tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === 'upcoming'));
+        STATE.view = 'upcoming';
+      }
+      render();
+    });
+
+    // Filter drawer open
+    document.getElementById('btn-filter').addEventListener('click', () => {
+      syncChipStates();
+      document.getElementById('drawer').classList.add('open');
+      document.getElementById('scrim').classList.add('open');
+    });
+
+    // Scrim closes drawer/sheet
+    document.getElementById('scrim').addEventListener('click', closeSheet);
+    document.getElementById('sheet-close').addEventListener('click', closeSheet);
+
+    // Filter apply/clear
+    document.getElementById('btn-apply').addEventListener('click', () => {
+      document.getElementById('drawer').classList.remove('open');
+      document.getElementById('scrim').classList.remove('open');
+      render();
+    });
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      STATE.filters = { categories: [], formats: [], languages: [], statuses: [] };
+      syncChipStates();
+      updateFilterBadge();
+      render();
+    });
+
+    // Escape key closes overlays
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+
+    // Delegate: event card taps
+    document.getElementById('main').addEventListener('click', (ev) => {
+      const card = ev.target.closest('.event-card');
+      if (card) { openSheet(card.dataset.id); return; }
+      const cell = ev.target.closest('.cal-cell.has-events');
+      if (cell) {
+        const [y, m, d] = cell.dataset.date.split('-').map(Number);
+        STATE.calCursor = new Date(y, m, d);
+        const target = new Date(y, m, d); target.setHours(0,0,0,0);
+        const match = STATE.events.find(e => {
+          if (!e._start) return false;
+          const s = new Date(e._start); s.setHours(0,0,0,0);
+          const en = toDate(e.end_date, e.end_time) || s;
+          const endD = new Date(en); endD.setHours(0,0,0,0);
+          return target >= s && target <= endD;
+        });
+        if (match) openSheet(match.id);
+      }
+    });
+  }
+
+  /* ---------- Init ---------- */
+  (async function init() {
+    await loadData();
+    buildFilters();
+    wire();
+    render();
+  })();
+</script>
+</body>
+</html>
