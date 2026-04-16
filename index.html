@@ -152,6 +152,62 @@
     color: var(--primary-ink);
   }
 
+  /* ---------- Search bar ---------- */
+  .search-bar {
+    padding: 8px 12px 10px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .search-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-alt);
+    border-radius: 999px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    transition: border-color .15s, background .15s;
+  }
+  .search-input-wrap:focus-within {
+    border-color: var(--primary);
+    background: var(--surface);
+  }
+  .search-input-wrap svg {
+    width: 16px; height: 16px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .search-input-wrap input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 10px 4px;
+    font-size: 0.95rem;
+    outline: none;
+    color: var(--text);
+  }
+  .search-input-wrap input::-webkit-search-cancel-button { display: none; }
+  .search-clear {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--border);
+    color: var(--text-muted);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background .12s, color .12s;
+  }
+  .search-clear svg { width: 12px; height: 12px; }
+  .search-clear:hover { background: var(--text-muted); color: var(--surface); }
+  .search-clear.show { display: inline-flex; }
+  .search-summary {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    padding: 2px 4px 12px;
+  }
+
   /* ---------- Main ---------- */
   main {
     flex: 1;
@@ -658,6 +714,7 @@
     .topbar { padding-left: 24px; padding-right: 24px; }
     .topbar h1 { font-size: 1.25rem; }
     .view-tabs { padding-left: 24px; padding-right: 24px; }
+    .search-bar { padding-left: 24px; padding-right: 24px; }
     .agenda { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
     .agenda-group { flex: 1 1 320px; min-width: 320px; }
     .cal-grid { padding: 8px; gap: 4px; }
@@ -714,6 +771,16 @@
     <button type="button" role="tab" data-view="recurring">Recurring</button>
     <button type="button" role="tab" data-view="all">All</button>
   </nav>
+
+  <div class="search-bar">
+    <div class="search-input-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="search-input" placeholder="Search events, venues, cities…" autocomplete="off" aria-label="Search events" />
+      <button type="button" class="search-clear" id="search-clear" aria-label="Clear search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
 
   <main id="main"></main>
 
@@ -804,6 +871,7 @@
     calCursor: new Date(),
     filters: { categories: [], formats: [], languages: [], statuses: [] },
     currentEvent: null,
+    search: '',
   };
 
   function parseCSV(text) {
@@ -948,8 +1016,12 @@
     const en = toDate(e.end_date, e.end_time);
     if (!s) return '';
     const sStr = `${MONTHS[s.getMonth()]} ${s.getDate()}`;
-    if (en && (en.toDateString() !== s.toDateString())) {
-      return `${sStr} – ${MONTHS[en.getMonth()]} ${en.getDate()}`;
+    const sameDay = en ? (en.toDateString() === s.toDateString()) : true;
+    if (!sameDay) {
+      const enStr = `${MONTHS[en.getMonth()]} ${en.getDate()}`;
+      const sTime = e.start_time ? `, ${fmtTime(e.start_time)}` : '';
+      const enTime = e.end_time  ? `, ${fmtTime(e.end_time)}`  : '';
+      return `${sStr}${sTime} – ${enStr}${enTime}`;
     }
     const times = [e.start_time && fmtTime(e.start_time), e.end_time && fmtTime(e.end_time)].filter(Boolean).join(' – ');
     return times ? `${sStr} · ${times}` : sStr;
@@ -980,15 +1052,61 @@
   function activeFilterCount() {
     return Object.values(STATE.filters).reduce((n, a) => n + a.length, 0);
   }
+  function matchesSearch(e) {
+    const q = STATE.search.trim().toLowerCase();
+    if (!q) return true;
+    // Don't leak private-event address/zoom details into search matches
+    const priv = isPrivate(e);
+    const fields = [
+      e.title, e.category, e.recurrence_pattern, e.format, e.language,
+      e.status, e.cost, e.notes,
+      priv ? '' : e.venue_name,
+      priv ? '' : e.address,
+      priv ? '' : e.city,
+      priv ? '' : e.state,
+      priv ? '' : e.zip,
+      priv ? '' : e.virtual_platform,
+    ];
+    return fields.join(' ').toLowerCase().includes(q);
+  }
 
   /* ---------- Rendering ---------- */
   function render() {
     const main = document.getElementById('main');
-    const filtered = STATE.events.filter(eventPassesFilters);
+    const filtered = STATE.events.filter(eventPassesFilters).filter(matchesSearch);
+    if (STATE.search.trim()) return renderSearchResults(main, filtered);
     if (STATE.view === 'calendar') return renderCalendar(main, filtered);
     if (STATE.view === 'recurring') return renderList(main, filtered.filter(e => e.recurring === 'true'), 'recurring');
     if (STATE.view === 'all')       return renderList(main, filtered, 'all');
     return renderList(main, filtered.filter(e => e.recurring !== 'true' && e._start && e._start >= startOfDay(new Date())), 'upcoming');
+  }
+
+  function renderSearchResults(main, events) {
+    const q = STATE.search.trim();
+    // Hide recurring *instances* — the template already covers them
+    const cleaned = events.filter(e => !e._recurring_origin);
+    if (!cleaned.length) {
+      main.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <p>No events match <strong>"${escapeHtml(q)}"</strong></p>
+      </div>`;
+      return;
+    }
+    const today = startOfDay(new Date());
+    const recurring = cleaned.filter(e => e.recurring === 'true');
+    const upcoming = cleaned.filter(e => e.recurring !== 'true' && e._start && e._start >= today).sort((a,b) => a._start - b._start);
+    const past     = cleaned.filter(e => e.recurring !== 'true' && e._start && e._start <  today).sort((a,b) => b._start - a._start);
+
+    const section = (label, items) => items.length
+      ? `<div class="agenda-group"><h2>${label} (${items.length})</h2>${items.map(eventCard).join('')}</div>` : '';
+
+    main.innerHTML = `
+      <div class="search-summary">Results for <strong>"${escapeHtml(q)}"</strong> · ${cleaned.length} match${cleaned.length === 1 ? '' : 'es'}</div>
+      <div class="agenda">
+        ${section('Upcoming', upcoming)}
+        ${section('Recurring', recurring)}
+        ${section('Past', past)}
+      </div>`;
   }
 
   function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
@@ -1471,6 +1589,22 @@
 
     // Escape key closes overlays
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+
+    // Search
+    const searchInput = document.getElementById('search-input');
+    const searchClear = document.getElementById('search-clear');
+    searchInput.addEventListener('input', () => {
+      STATE.search = searchInput.value;
+      searchClear.classList.toggle('show', searchInput.value.length > 0);
+      render();
+    });
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      STATE.search = '';
+      searchClear.classList.remove('show');
+      render();
+      searchInput.focus();
+    });
 
     // Delegate: event card / calendar cell taps
     const mainEl = document.getElementById('main');
