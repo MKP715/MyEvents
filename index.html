@@ -254,6 +254,12 @@
     opacity: 0.92;
   }
   .tag.tentative { background: rgba(245,158,11,.15); color: var(--warning); }
+  .tag.private { background: rgba(100,116,139,.2); color: var(--text-muted); }
+  .private-note {
+    font-style: italic;
+    color: var(--text-muted);
+    font-size: 0.9em;
+  }
   .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -839,7 +845,8 @@
       const parsed = parseCSV(text).map(e => {
         const recurring = String(e.recurring || '').toLowerCase() === 'true' ? 'true' : 'false';
         const all_day  = String(e.all_day  || '').toLowerCase() === 'true' ? 'true' : 'false';
-        return { ...e, recurring, all_day, _start: toDate(e.start_date, e.start_time) };
+        const priv     = String(e.private  || '').toLowerCase() === 'true' ? 'true' : 'false';
+        return { ...e, recurring, all_day, private: priv, _start: toDate(e.start_date, e.start_time) };
       });
       const occurrences = expandRecurring(parsed);
       STATE.events = [...parsed, ...occurrences];
@@ -948,6 +955,8 @@
     return times ? `${sStr} · ${times}` : sStr;
   }
   function uniq(arr) { return [...new Set(arr.filter(Boolean))]; }
+  const isPrivate = (e) => e && e.private === 'true';
+  const PRIVATE_NOTE = 'Private event — contact host for details';
   const FORMAT_ICONS = {
     'In-Person': '📍',
     'Virtual':   '💻',
@@ -1026,11 +1035,15 @@
           ? `<div class="mon">${MONTHS[e._start.getMonth()]}</div><div class="day">${e._start.getDate()}</div>`
           : `<div class="mon">TBD</div>`);
     const when = fmtDateRange(e);
-    const loc = e.format === 'Virtual'
-      ? 'Online'
-      : [e.venue_name, e.city].filter(Boolean).join(', ');
+    const priv = isPrivate(e);
+    const loc = priv
+      ? 'Private — contact host'
+      : (e.format === 'Virtual'
+          ? 'Online'
+          : [e.venue_name, e.city].filter(Boolean).join(', '));
     const tags = [
       `<span class="tag cat">${escapeHtml(e.category || '')}</span>`,
+      priv ? `<span class="tag private">🔒 Private</span>` : '',
       e._recurring_origin ? `<span class="tag">↻ Recurring</span>` : '',
       e.format ? `<span class="tag">${FORMAT_ICONS[e.format]||''} ${e.format}</span>` : '',
       e.language ? `<span class="tag">${LANG_LABEL[e.language]||e.language}</span>` : '',
@@ -1218,16 +1231,19 @@
 
   /* ---------- Share & add-to-calendar ---------- */
   function buildShareText(e) {
-    const addr = [e.venue_name, e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(', ');
+    const priv = isPrivate(e);
+    const addr = priv
+      ? ''
+      : [e.venue_name, e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(', ');
     const lines = [
       e.title,
       e.category ? `(${e.category})` : '',
       fmtDateRange(e),
       e.format ? `Format: ${e.format}` : '',
-      addr,
-      e.virtual_link ? `Join: ${e.virtual_link}` : '',
-      e.meeting_id ? `Meeting ID: ${e.meeting_id}` : '',
-      e.passcode ? `Passcode: ${e.passcode}` : '',
+      priv ? PRIVATE_NOTE : addr,
+      priv ? '' : (e.virtual_link ? `Join: ${e.virtual_link}` : ''),
+      priv ? '' : (e.meeting_id   ? `Meeting ID: ${e.meeting_id}` : ''),
+      priv ? '' : (e.passcode     ? `Passcode: ${e.passcode}` : ''),
       e.cost ? `Cost: ${e.cost}` : '',
       e.status && e.status !== 'Confirmed' ? `Status: ${e.status}` : '',
       e.source_url ? `Flyer: ${e.source_url}` : '',
@@ -1255,7 +1271,10 @@
     const dt = d => d ? `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}00` : '';
     const s = toDate(e.start_date, e.start_time);
     const en = toDate(e.end_date || e.start_date, e.end_time || e.start_time) || s;
-    const addr = [e.venue_name, e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(', ');
+    const priv = isPrivate(e);
+    const addr = priv
+      ? PRIVATE_NOTE
+      : [e.venue_name, e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(', ');
     const description = buildShareText(e).replace(/\n/g, '\\n');
     const ics = [
       'BEGIN:VCALENDAR',
@@ -1312,11 +1331,12 @@
 
     const rows = events.map(e => {
       const color = colorFor(e.category);
+      const priv = isPrivate(e);
       const time = e.start_time ? fmtTime(e.start_time) : 'All day';
       const endBit = (e.end_time && e.end_date === e.start_date) ? ` – ${fmtTime(e.end_time)}` : '';
-      const loc = e.format === 'Virtual'
-        ? 'Online'
-        : [e.venue_name, e.city].filter(Boolean).join(', ');
+      const loc = priv
+        ? 'Private'
+        : (e.format === 'Virtual' ? 'Online' : [e.venue_name, e.city].filter(Boolean).join(', '));
       const recurMark = e._recurring_origin ? ' ↻' : '';
       return `<button type="button" class="day-event-row" data-id="${escapeHtml(e.id)}">
         <span class="dot-bar" style="--event-color:${color}"></span>
@@ -1324,7 +1344,7 @@
           <div class="day-event-title">${escapeHtml(e.title)}${recurMark}</div>
           <div class="day-event-meta">
             <span>🕒 ${escapeHtml(time + endBit)}</span>
-            ${loc ? `<span>📍 ${escapeHtml(loc)}</span>` : ''}
+            ${loc ? `<span>${priv ? '🔒' : '📍'} ${escapeHtml(loc)}</span>` : ''}
             ${e.status === 'Tentative' ? `<span class="tag tentative">Tentative</span>` : ''}
           </div>
         </div>
@@ -1350,6 +1370,7 @@
     const subBits = [e.category, fmtDateRange(e)].filter(Boolean);
     document.getElementById('sheet-sub').textContent = subBits.join(' · ');
 
+    const priv = isPrivate(e);
     const addressParts = [e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean);
     const fullAddress = addressParts.join(' ');
     const venueLabel = [e.venue_name, fullAddress].filter(Boolean).join(' — ');
@@ -1357,19 +1378,29 @@
       ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([e.venue_name, fullAddress].filter(Boolean).join(' '))}" target="_blank" rel="noopener">${escapeHtml(venueLabel)}</a>`
       : '';
 
+    const whereRow = priv
+      ? ['Where', `<span class="private-note">🔒 ${PRIVATE_NOTE}</span>`]
+      : (mapsLink ? ['Where', mapsLink] : null);
+    const joinRow = priv
+      ? null
+      : (e.virtual_link
+          ? ['Join', `<a href="${escapeHtml(e.virtual_link)}" target="_blank" rel="noopener">${escapeHtml(e.virtual_platform || 'Open link')}</a>`]
+          : (e.virtual_platform ? ['Platform', escapeHtml(e.virtual_platform)] : null));
+    const meetingIdRow = priv ? null : (e.meeting_id ? ['Meeting ID', escapeHtml(e.meeting_id)] : null);
+    const passcodeRow  = priv ? null : (e.passcode   ? ['Passcode',   escapeHtml(e.passcode)]   : null);
+
     const rows = [
       ['When', e._recurring_origin
           ? `${escapeHtml(fmtDateRange(e))} <span class="tag" style="margin-left:6px">↻ Recurring</span>`
           : (e.recurring === 'true'
               ? escapeHtml(e.recurrence_pattern || 'Recurring')
               : `${escapeHtml(fmtDateRange(e))}${e.all_day === 'true' ? ' (all day)' : ''}`)],
-      ['Format', `${FORMAT_ICONS[e.format]||''} ${escapeHtml(e.format || '—')}`],
+      ['Format', `${FORMAT_ICONS[e.format]||''} ${escapeHtml(e.format || '—')}${priv ? ' <span class="tag private" style="margin-left:6px">🔒 Private</span>' : ''}`],
       ['Language', escapeHtml(e.language || '—')],
-      mapsLink ? ['Where', mapsLink] : null,
-      e.virtual_link ? ['Join', `<a href="${escapeHtml(e.virtual_link)}" target="_blank" rel="noopener">${escapeHtml(e.virtual_platform || 'Open link')}</a>`]
-                     : (e.virtual_platform ? ['Platform', escapeHtml(e.virtual_platform)] : null),
-      e.meeting_id ? ['Meeting ID', escapeHtml(e.meeting_id)] : null,
-      e.passcode   ? ['Passcode', escapeHtml(e.passcode)] : null,
+      whereRow,
+      joinRow,
+      meetingIdRow,
+      passcodeRow,
       e.cost       ? ['Cost', escapeHtml(e.cost)] : null,
       e.status     ? ['Status', escapeHtml(e.status)] : null,
       e.source_url ? ['Flyer', `<a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener">Open flyer / link</a>`] : null,
