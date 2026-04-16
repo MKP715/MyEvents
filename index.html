@@ -678,7 +678,7 @@
   ];
   const CATEGORY_COLOR = Object.fromEntries(CATEGORIES.map(c => [c.name, c.color]));
   const DEFAULT_COLOR = '#2E7D32';
-  const colorFor = (cat, fallback) => CATEGORY_COLOR[cat] || fallback || DEFAULT_COLOR;
+  const colorFor = (cat) => CATEGORY_COLOR[cat] || DEFAULT_COLOR;
 
   const STATE = {
     events: [],
@@ -723,7 +723,11 @@
       const res = await fetch(CSV_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const text = await res.text();
-      const parsed = parseCSV(text).map(e => ({ ...e, _start: toDate(e.start_date, e.start_time) }));
+      const parsed = parseCSV(text).map(e => {
+        const recurring = String(e.recurring || '').toLowerCase() === 'true' ? 'true' : 'false';
+        const all_day  = String(e.all_day  || '').toLowerCase() === 'true' ? 'true' : 'false';
+        return { ...e, recurring, all_day, _start: toDate(e.start_date, e.start_time) };
+      });
       const occurrences = expandRecurring(parsed);
       STATE.events = [...parsed, ...occurrences];
     } catch (err) {
@@ -902,7 +906,7 @@
   }
 
   function eventCard(e) {
-    const color = colorFor(e.category, e.category_color);
+    const color = colorFor(e.category);
     const datePart = e.recurring === 'true'
       ? `<div class="recurring-icon">↻</div><div class="mon" style="margin-top:2px">${(e.recurrence_pattern||'').split(' ')[0] || 'Every'}</div>`
       : (e._start
@@ -971,7 +975,7 @@
     for (let day = 1; day <= daysInMonth; day++) {
       const key = `${y}-${m}-${day}`;
       const todays = byDate[key] || [];
-      const dots = uniq(todays.map(e => colorFor(e.category, e.category_color)))
+      const dots = uniq(todays.map(e => colorFor(e.category)))
         .slice(0, 4)
         .map(c => `<span class="cal-dot" style="--dot:${c}"></span>`).join('');
       const date = new Date(y, m, day);
@@ -1164,7 +1168,7 @@
     const e = STATE.events.find(x => x.id === id);
     if (!e) return;
     STATE.currentEvent = e;
-    const color = colorFor(e.category, e.category_color);
+    const color = colorFor(e.category);
     document.getElementById('sheet-head').style.setProperty('--event-color', color);
     document.getElementById('sheet-title').textContent = e.title || '(Untitled)';
     const subBits = [e.category, fmtDateRange(e)].filter(Boolean);
