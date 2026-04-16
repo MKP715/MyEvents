@@ -450,23 +450,67 @@
   }
   .sheet-header h3 {
     font-size: 1.2rem;
-    margin: 0 30px 6px 0;
+    margin: 0 90px 6px 0;
     font-weight: 700;
+    min-height: 1.4em;
   }
   .sheet-header .sub {
     font-size: 0.85rem;
     opacity: 0.9;
+    margin-right: 90px;
   }
-  .sheet-close {
+  .sheet-actions {
     position: absolute;
-    top: 16px; right: 14px;
-    width: 32px; height: 32px;
+    top: 14px; right: 12px;
+    display: flex;
+    gap: 6px;
+  }
+  .sheet-actions button {
+    width: 34px; height: 34px;
     border-radius: 50%;
     background: rgba(255,255,255,.2);
     color: #fff;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: background .15s;
+  }
+  .sheet-actions button:hover,
+  .sheet-actions button:active { background: rgba(255,255,255,.35); }
+  .sheet-actions svg { width: 18px; height: 18px; }
+  .sheet-footer {
+    padding: 12px 16px calc(14px + var(--safe-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    gap: 8px;
+  }
+  .sheet-footer .btn {
+    padding: 11px;
+    font-size: 0.9rem;
+  }
+  /* Toast */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(28px + var(--safe-bottom));
+    transform: translateX(-50%) translateY(20px);
+    background: #0f172a;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: var(--shadow-lg);
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    max-width: 90vw;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
   }
   .sheet-body {
     padding: 16px 18px calc(18px + var(--safe-bottom));
@@ -559,7 +603,7 @@
 
 <!-- Filter drawer -->
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-hidden="true">
+<aside class="drawer" id="drawer" aria-hidden="true" inert>
   <div class="handle"></div>
   <h3>Filters</h3>
 
@@ -590,17 +634,24 @@
 </aside>
 
 <!-- Event detail sheet -->
-<aside class="sheet" id="sheet" aria-hidden="true">
+<aside class="sheet" id="sheet" aria-hidden="true" inert>
   <div class="sheet-header" id="sheet-head">
     <div class="handle"></div>
-    <button type="button" class="sheet-close" id="sheet-close" aria-label="Close">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
+    <div class="sheet-actions">
+      <button type="button" id="sheet-share" aria-label="Share event" title="Share">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
+      <button type="button" id="sheet-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
     <h3 id="sheet-title"></h3>
     <div class="sub" id="sheet-sub"></div>
   </div>
   <div class="sheet-body" id="sheet-body"></div>
+  <div class="sheet-footer" id="sheet-footer"></div>
 </aside>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
   /* ---------- Data loading ---------- */
@@ -672,7 +723,9 @@
       const res = await fetch(CSV_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const text = await res.text();
-      STATE.events = parseCSV(text).map(e => ({ ...e, _start: toDate(e.start_date, e.start_time) }));
+      const parsed = parseCSV(text).map(e => ({ ...e, _start: toDate(e.start_date, e.start_time) }));
+      const occurrences = expandRecurring(parsed);
+      STATE.events = [...parsed, ...occurrences];
     } catch (err) {
       document.getElementById('main').innerHTML =
         `<div class="empty-state">
@@ -693,6 +746,69 @@
     const [hh = 0, mm = 0] = (t || '00:00').split(':').map(Number);
     return new Date(y, m-1, day, hh, mm);
   }
+  function fmtISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  /* ---------- Recurring event expansion ----------
+     Generates concrete instances of recurring events for the next 12 months
+     so they appear on the calendar and in Upcoming alongside dated events.
+     The original "template" row stays in STATE so the Recurring tab keeps
+     showing the pattern (e.g. "Second Sunday of every month"). */
+  const ORDINALS = { first: 0, second: 1, third: 2, fourth: 3, fifth: 4, last: -1 };
+  const DAYS_OF_WEEK = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+  function nthWeekdayOfMonth(year, month, dow, nth) {
+    if (nth === -1) {
+      const lastDay = new Date(year, month + 1, 0);
+      const diff = (lastDay.getDay() - dow + 7) % 7;
+      return new Date(year, month, lastDay.getDate() - diff);
+    }
+    const first = new Date(year, month, 1);
+    const diff = (dow - first.getDay() + 7) % 7;
+    const day = 1 + diff + nth * 7;
+    const maxDay = new Date(year, month + 1, 0).getDate();
+    return day > maxDay ? null : new Date(year, month, day);
+  }
+  function parseRecurrencePattern(pattern) {
+    const p = (pattern || '').toLowerCase();
+    const m = p.match(/(first|second|third|fourth|fifth|last)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)/);
+    if (!m) return null;
+    return { nth: ORDINALS[m[1]], dow: DAYS_OF_WEEK[m[2]] };
+  }
+  function expandRecurring(events) {
+    const today = startOfDay(new Date());
+    const horizon = new Date(today); horizon.setFullYear(horizon.getFullYear() + 1);
+    const instances = [];
+    events.filter(e => e.recurring === 'true').forEach(e => {
+      const rule = parseRecurrencePattern(e.recurrence_pattern);
+      if (!rule) return;
+      const [sh = 0, sm = 0] = (e.start_time || '00:00').split(':').map(Number);
+      const [eh, em] = (e.end_time || '').split(':').map(Number);
+      const cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+      while (cursor <= horizon) {
+        const d = nthWeekdayOfMonth(cursor.getFullYear(), cursor.getMonth(), rule.dow, rule.nth);
+        if (d) {
+          const start = new Date(d); start.setHours(sh, sm, 0, 0);
+          if (start >= today && start <= horizon) {
+            const iso = fmtISO(start);
+            instances.push({
+              ...e,
+              id: `${e.id}-${iso}`,
+              recurring: 'false',
+              _recurring_origin: e.id,
+              start_date: iso,
+              end_date: iso,
+              end_time: (e.end_time || ''),
+              _start: start,
+            });
+          }
+        }
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    });
+    return instances;
+  }
+
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   function fmtTime(t) {
@@ -798,6 +914,7 @@
       : [e.venue_name, e.city].filter(Boolean).join(', ');
     const tags = [
       `<span class="tag cat">${escapeHtml(e.category || '')}</span>`,
+      e._recurring_origin ? `<span class="tag">↻ Recurring</span>` : '',
       e.format ? `<span class="tag">${FORMAT_ICONS[e.format]||''} ${e.format}</span>` : '',
       e.language ? `<span class="tag">${LANG_LABEL[e.language]||e.language}</span>` : '',
       e.status === 'Tentative' ? `<span class="tag tentative">Tentative</span>` : '',
@@ -942,35 +1059,140 @@
     });
   }
 
+  /* ---------- Overlays ---------- */
+  function openOverlay(id) {
+    const el = document.getElementById(id);
+    el.classList.add('open');
+    el.removeAttribute('inert');
+    el.setAttribute('aria-hidden', 'false');
+    document.getElementById('scrim').classList.add('open');
+  }
+  function closeOverlay(id) {
+    const el = document.getElementById(id);
+    el.classList.remove('open');
+    el.setAttribute('inert', '');
+    el.setAttribute('aria-hidden', 'true');
+  }
+  function closeSheet() {
+    closeOverlay('sheet');
+    closeOverlay('drawer');
+    document.getElementById('scrim').classList.remove('open');
+    STATE.currentEvent = null;
+  }
+
+  /* ---------- Toast ---------- */
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  /* ---------- Share & add-to-calendar ---------- */
+  function buildShareText(e) {
+    const addr = [e.venue_name, e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(', ');
+    const lines = [
+      e.title,
+      e.category ? `(${e.category})` : '',
+      fmtDateRange(e),
+      e.format ? `Format: ${e.format}` : '',
+      addr,
+      e.virtual_link ? `Join: ${e.virtual_link}` : '',
+      e.meeting_id ? `Meeting ID: ${e.meeting_id}` : '',
+      e.passcode ? `Passcode: ${e.passcode}` : '',
+      e.cost ? `Cost: ${e.cost}` : '',
+      e.status && e.status !== 'Confirmed' ? `Status: ${e.status}` : '',
+      e.source_url ? `Flyer: ${e.source_url}` : '',
+      e.notes || '',
+    ].filter(Boolean);
+    return lines.join('\n');
+  }
+  async function shareCurrentEvent() {
+    const e = STATE.currentEvent;
+    if (!e) return;
+    const text = buildShareText(e);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: e.title, text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        showToast('Copied to clipboard');
+      }
+    } catch (err) {
+      if (err && err.name !== 'AbortError') showToast('Could not share');
+    }
+  }
+
+  function buildICS(e) {
+    const dt = d => d ? `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}00` : '';
+    const s = toDate(e.start_date, e.start_time);
+    const en = toDate(e.end_date || e.start_date, e.end_time || e.start_time) || s;
+    const addr = [e.venue_name, e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean).join(', ');
+    const description = buildShareText(e).replace(/\n/g, '\\n');
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//AA Events//EN',
+      'BEGIN:VEVENT',
+      `UID:${e.id}@aa-events`,
+      `DTSTAMP:${dt(new Date())}Z`,
+      `DTSTART:${dt(s)}`,
+      `DTEND:${dt(en)}`,
+      `SUMMARY:${(e.title || '').replace(/,/g, '\\,')}`,
+      `LOCATION:${addr.replace(/,/g, '\\,')}`,
+      `DESCRIPTION:${description.replace(/,/g, '\\,')}`,
+      e.source_url ? `URL:${e.source_url}` : '',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].filter(Boolean).join('\r\n');
+    return ics;
+  }
+  function downloadICS(e) {
+    const blob = new Blob([buildICS(e)], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(e.title || 'event').replace(/[^a-z0-9]+/gi, '-')}.ics`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   /* ---------- Detail sheet ---------- */
   function openSheet(id) {
     const e = STATE.events.find(x => x.id === id);
     if (!e) return;
+    STATE.currentEvent = e;
     const color = colorFor(e.category, e.category_color);
     document.getElementById('sheet-head').style.setProperty('--event-color', color);
-    document.getElementById('sheet-title').textContent = e.title;
-    document.getElementById('sheet-sub').textContent = `${e.category || ''} · ${fmtDateRange(e)}`;
+    document.getElementById('sheet-title').textContent = e.title || '(Untitled)';
+    const subBits = [e.category, fmtDateRange(e)].filter(Boolean);
+    document.getElementById('sheet-sub').textContent = subBits.join(' · ');
 
     const addressParts = [e.address, [e.city, e.state].filter(Boolean).join(', '), e.zip].filter(Boolean);
     const fullAddress = addressParts.join(' ');
-    const mapsLink = fullAddress
-      ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([e.venue_name, fullAddress].filter(Boolean).join(' '))}" target="_blank" rel="noopener">${escapeHtml([e.venue_name, fullAddress].filter(Boolean).join(' — '))}</a>`
+    const venueLabel = [e.venue_name, fullAddress].filter(Boolean).join(' — ');
+    const mapsLink = (e.venue_name || fullAddress)
+      ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([e.venue_name, fullAddress].filter(Boolean).join(' '))}" target="_blank" rel="noopener">${escapeHtml(venueLabel)}</a>`
       : '';
 
     const rows = [
-      ['When', e.recurring === 'true'
-        ? escapeHtml(e.recurrence_pattern || 'Recurring')
-        : `${escapeHtml(fmtDateRange(e))}${e.all_day === 'true' ? ' (all day)' : ''}`],
+      ['When', e._recurring_origin
+          ? `${escapeHtml(fmtDateRange(e))} <span class="tag" style="margin-left:6px">↻ Recurring</span>`
+          : (e.recurring === 'true'
+              ? escapeHtml(e.recurrence_pattern || 'Recurring')
+              : `${escapeHtml(fmtDateRange(e))}${e.all_day === 'true' ? ' (all day)' : ''}`)],
       ['Format', `${FORMAT_ICONS[e.format]||''} ${escapeHtml(e.format || '—')}`],
       ['Language', escapeHtml(e.language || '—')],
       mapsLink ? ['Where', mapsLink] : null,
-      e.virtual_link ? ['Join', `<a href="${escapeHtml(e.virtual_link)}" target="_blank" rel="noopener">${escapeHtml(e.virtual_platform || 'Link')}</a>`]
+      e.virtual_link ? ['Join', `<a href="${escapeHtml(e.virtual_link)}" target="_blank" rel="noopener">${escapeHtml(e.virtual_platform || 'Open link')}</a>`]
                      : (e.virtual_platform ? ['Platform', escapeHtml(e.virtual_platform)] : null),
       e.meeting_id ? ['Meeting ID', escapeHtml(e.meeting_id)] : null,
       e.passcode   ? ['Passcode', escapeHtml(e.passcode)] : null,
       e.cost       ? ['Cost', escapeHtml(e.cost)] : null,
       e.status     ? ['Status', escapeHtml(e.status)] : null,
-      e.source_url ? ['Source', `<a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener">Open link</a>`] : null,
+      e.source_url ? ['Flyer', `<a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener">Open flyer / link</a>`] : null,
       e.notes      ? ['Notes', escapeHtml(e.notes)] : null,
     ].filter(Boolean);
 
@@ -978,13 +1200,17 @@
       `<div class="detail-row"><div class="lbl">${l}</div><div class="val">${v}</div></div>`
     ).join('');
 
-    document.getElementById('sheet').classList.add('open');
-    document.getElementById('scrim').classList.add('open');
-  }
-  function closeSheet() {
-    document.getElementById('sheet').classList.remove('open');
-    document.getElementById('drawer').classList.remove('open');
-    document.getElementById('scrim').classList.remove('open');
+    const showICS = !!e._start;
+    document.getElementById('sheet-footer').innerHTML = `
+      ${showICS ? '<button type="button" class="btn btn-ghost" id="btn-ics">Add to calendar</button>' : ''}
+      <button type="button" class="btn btn-primary" id="btn-share-footer">Share</button>
+    `;
+    if (showICS) {
+      document.getElementById('btn-ics').addEventListener('click', () => downloadICS(e));
+    }
+    document.getElementById('btn-share-footer').addEventListener('click', shareCurrentEvent);
+
+    openOverlay('sheet');
   }
 
   /* ---------- Event wiring ---------- */
@@ -1012,17 +1238,17 @@
     // Filter drawer open
     document.getElementById('btn-filter').addEventListener('click', () => {
       syncChipStates();
-      document.getElementById('drawer').classList.add('open');
-      document.getElementById('scrim').classList.add('open');
+      openOverlay('drawer');
     });
 
     // Scrim closes drawer/sheet
     document.getElementById('scrim').addEventListener('click', closeSheet);
     document.getElementById('sheet-close').addEventListener('click', closeSheet);
+    document.getElementById('sheet-share').addEventListener('click', shareCurrentEvent);
 
     // Filter apply/clear
     document.getElementById('btn-apply').addEventListener('click', () => {
-      document.getElementById('drawer').classList.remove('open');
+      closeOverlay('drawer');
       document.getElementById('scrim').classList.remove('open');
       render();
     });
