@@ -208,6 +208,90 @@
     padding: 2px 4px 12px;
   }
 
+  /* ---------- Range chips (quick date filters) ---------- */
+  .range-chips {
+    display: flex;
+    gap: 6px;
+    padding: 0 12px 10px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .range-chips::-webkit-scrollbar { display: none; }
+  .range-chip {
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    transition: background .12s, color .12s, border-color .12s;
+  }
+  .range-chip.active {
+    background: var(--primary);
+    color: var(--primary-ink);
+    border-color: var(--primary);
+  }
+
+  /* ---------- Week view ---------- */
+  .week-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .week-day h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin: 0 2px 6px;
+    color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .week-day h3 .today-pill {
+    font-size: 0.65rem;
+    font-weight: 800;
+    background: var(--primary);
+    color: var(--primary-ink);
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .week-day.today h3 { color: var(--primary); }
+  .week-empty {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    padding: 6px 4px 10px;
+    font-style: italic;
+  }
+  @media (min-width: 960px) {
+    .week-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+    }
+    .week-day {
+      background: var(--surface);
+      padding: 10px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      min-height: 260px;
+    }
+    .week-day .event-card { padding: 10px 10px 10px 14px; }
+  }
+
+  /* Swipe hint animation on view change */
+  .view-change-in { animation: viewIn .18s ease-out; }
+  @keyframes viewIn {
+    from { opacity: 0; transform: translateX(var(--swipe-from, 0)); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
   /* ---------- Main ---------- */
   main {
     flex: 1;
@@ -766,7 +850,8 @@
   </header>
 
   <nav class="view-tabs" role="tablist">
-    <button type="button" role="tab" data-view="calendar" class="active">Calendar</button>
+    <button type="button" role="tab" data-view="calendar" class="active">Month</button>
+    <button type="button" role="tab" data-view="week">Week</button>
     <button type="button" role="tab" data-view="upcoming">Upcoming</button>
     <button type="button" role="tab" data-view="recurring">Recurring</button>
     <button type="button" role="tab" data-view="all">All</button>
@@ -780,6 +865,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+  </div>
+
+  <div class="range-chips" role="toolbar" aria-label="Quick filters">
+    <button type="button" class="range-chip active" data-range="">All</button>
+    <button type="button" class="range-chip" data-range="today">Today</button>
+    <button type="button" class="range-chip" data-range="weekend">This Weekend</button>
+    <button type="button" class="range-chip" data-range="7">Next 7 days</button>
+    <button type="button" class="range-chip" data-range="30">Next 30 days</button>
   </div>
 
   <main id="main"></main>
@@ -872,7 +965,38 @@
     filters: { categories: [], formats: [], languages: [], statuses: [] },
     currentEvent: null,
     search: '',
+    range: '',
   };
+
+  /* ---------- URL state (deep links) ----------
+     Shape: ?view=week&date=2026-04-19&q=foo&range=7&event=8
+     `date` = calendar cursor (month for Month view, week-start for Week view). */
+  const VIEWS = ['calendar','week','upcoming','recurring','all'];
+  const RANGES = ['today','weekend','7','30'];
+  function applyURLToState() {
+    const p = new URLSearchParams(location.search);
+    const v = p.get('view'); if (v && VIEWS.includes(v)) STATE.view = v;
+    const d = p.get('date');
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      const [y,mo,da] = d.split('-').map(Number);
+      STATE.calCursor = new Date(y, mo-1, da);
+    }
+    const q = p.get('q'); if (q) STATE.search = q;
+    const r = p.get('range'); if (r && RANGES.includes(r)) STATE.range = r;
+    return { eventId: p.get('event'), dayISO: p.get('day') };
+  }
+  function updateURL() {
+    const p = new URLSearchParams();
+    if (STATE.view !== 'calendar') p.set('view', STATE.view);
+    if (STATE.view === 'calendar' || STATE.view === 'week') {
+      p.set('date', fmtISO(STATE.calCursor));
+    }
+    if (STATE.search) p.set('q', STATE.search);
+    if (STATE.range)  p.set('range', STATE.range);
+    if (STATE.currentEvent) p.set('event', String(STATE.currentEvent.id));
+    const qs = p.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+  }
 
   function parseCSV(text) {
     const rows = [];
@@ -922,12 +1046,13 @@
       document.getElementById('main').innerHTML =
         `<div class="empty-state">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.5" fill="currentColor"/></svg>
-           <p><strong>Unable to load meetings.csv</strong></p>
-           <p>${err.message}</p>
+           <p><strong>Unable to load events</strong></p>
+           <p>${escapeHtml(err.message)}</p>
            <p style="margin-top:10px; font-size:.85rem">If opening from disk, run a local server:<br/>
            <code>python -m http.server</code></p>
          </div>`;
-      throw err;
+      // Don't rethrow — let init() finish wiring up the rest of the UI
+      // so the tabs / search / filter drawer remain interactive.
     }
   }
 
@@ -1070,15 +1195,125 @@
     return fields.join(' ').toLowerCase().includes(q);
   }
 
+  /* ---------- Range filter (quick date chips) ---------- */
+  function rangeBounds(range) {
+    if (!range) return null;
+    const t = startOfDay(new Date());
+    const end = new Date(t);
+    if (range === 'today')   { end.setDate(t.getDate() + 1); return [t, end]; }
+    if (range === '7')       { end.setDate(t.getDate() + 7); return [t, end]; }
+    if (range === '30')      { end.setDate(t.getDate() + 30); return [t, end]; }
+    if (range === 'weekend') {
+      const dow = t.getDay(); // 0=Sun
+      const start = new Date(t);
+      if (dow === 0)      { /* Sunday: today only weekend day left */ end.setDate(t.getDate() + 1); }
+      else if (dow === 6) { /* Saturday: today + Sun */ end.setDate(t.getDate() + 2); }
+      else { /* Weekday: jump to upcoming Sat through Sun */ start.setDate(t.getDate() + (6 - dow)); end.setTime(start.getTime()); end.setDate(start.getDate() + 2); }
+      return [start, end];
+    }
+    return null;
+  }
+  function matchesRange(e) {
+    const b = rangeBounds(STATE.range);
+    if (!b) return true;
+    // Exclude recurring templates (no date); instances are concrete and handled below
+    if (e.recurring === 'true') return false;
+    if (!e._start) return false;
+    const [start, end] = b;
+    // An event matches if it overlaps the window [start, end)
+    const s = e._start;
+    const en = toDate(e.end_date, e.end_time) || s;
+    return s < end && en >= start;
+  }
+
   /* ---------- Rendering ---------- */
   function render() {
     const main = document.getElementById('main');
-    const filtered = STATE.events.filter(eventPassesFilters).filter(matchesSearch);
+    const filtered = STATE.events
+      .filter(eventPassesFilters)
+      .filter(matchesSearch)
+      .filter(matchesRange);
+    updateURL();
     if (STATE.search.trim()) return renderSearchResults(main, filtered);
     if (STATE.view === 'calendar') return renderCalendar(main, filtered);
+    if (STATE.view === 'week')     return renderWeek(main, filtered);
     if (STATE.view === 'recurring') return renderList(main, filtered.filter(e => e.recurring === 'true'), 'recurring');
     if (STATE.view === 'all')       return renderList(main, filtered, 'all');
     return renderList(main, filtered.filter(e => e.recurring !== 'true' && e._start && e._start >= startOfDay(new Date())), 'upcoming');
+  }
+
+  function startOfWeek(d) {
+    const x = startOfDay(d);
+    x.setDate(x.getDate() - x.getDay()); // Sunday-start
+    return x;
+  }
+
+  function renderWeek(main, events) {
+    const weekStart = startOfWeek(STATE.calCursor);
+    const days = Array.from({length: 7}, (_, i) => {
+      const d = new Date(weekStart); d.setDate(d.getDate() + i); return d;
+    });
+
+    // Bucket concrete (dated) events by day in the visible week
+    const byDate = {};
+    events.forEach(e => {
+      if (e.recurring === 'true') return;
+      if (!e._start) return;
+      const s = e._start;
+      const en = toDate(e.end_date, e.end_time) || s;
+      const d = new Date(s); d.setHours(0,0,0,0);
+      const endD = new Date(en); endD.setHours(0,0,0,0);
+      while (d <= endD) {
+        (byDate[fmtISO(d)] ??= []).push(e);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+
+    const today = startOfDay(new Date()).getTime();
+    const sections = days.map(d => {
+      const key = fmtISO(d);
+      const todays = (byDate[key] || []).slice().sort((a,b) => (a._start || 0) - (b._start || 0));
+      const isToday = startOfDay(d).getTime() === today;
+      const dayLabel = `${DOW_LONG[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+      const body = todays.length
+        ? todays.map(eventCard).join('')
+        : '<div class="week-empty">No events</div>';
+      return `<div class="week-day ${isToday ? 'today' : ''}">
+        <h3>${dayLabel}${isToday ? '<span class="today-pill">Today</span>' : ''}</h3>
+        ${body}
+      </div>`;
+    }).join('');
+
+    const weekEnd = days[6];
+    const sameMonth = weekStart.getMonth() === weekEnd.getMonth();
+    const sameYear  = weekStart.getFullYear() === weekEnd.getFullYear();
+    const title = sameMonth
+      ? `${MONTHS[weekStart.getMonth()]} ${weekStart.getDate()} – ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`
+      : sameYear
+        ? `${MONTHS[weekStart.getMonth()]} ${weekStart.getDate()} – ${MONTHS[weekEnd.getMonth()]} ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`
+        : `${MONTHS[weekStart.getMonth()]} ${weekStart.getDate()}, ${weekStart.getFullYear()} – ${MONTHS[weekEnd.getMonth()]} ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
+
+    main.innerHTML = `
+      <div class="cal-nav">
+        <button type="button" class="icon-btn" id="week-prev" aria-label="Previous week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <h2>${title}</h2>
+        <button type="button" class="icon-btn" id="week-next" aria-label="Next week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+      <div class="week-grid">${sections}</div>
+    `;
+
+    document.getElementById('week-prev').onclick = () => stepWeek(-1);
+    document.getElementById('week-next').onclick = () => stepWeek(1);
+  }
+
+  function stepMonth(delta) {
+    STATE.calCursor = new Date(STATE.calCursor.getFullYear(), STATE.calCursor.getMonth() + delta, 1);
+    render();
+  }
+  function stepWeek(delta) {
+    const d = new Date(STATE.calCursor); d.setDate(d.getDate() + delta * 7);
+    STATE.calCursor = d;
+    render();
   }
 
   function renderSearchResults(main, events) {
@@ -1170,13 +1405,13 @@
     ].filter(Boolean).join('');
 
     return `
-      <article class="event-card" data-id="${e.id}" style="--event-color:${color}">
+      <article class="event-card" data-id="${escapeHtml(e.id)}" style="--event-color:${color}">
         <div class="event-date">${datePart}</div>
         <div class="event-body">
           <div class="event-title">${escapeHtml(e.title)}</div>
           <div class="event-meta">
             <span>🕒 ${escapeHtml(when)}</span>
-            ${loc ? `<span>📍 ${escapeHtml(loc)}</span>` : ''}
+            ${loc ? `<span>${isPrivate(e) ? '🔒' : '📍'} ${escapeHtml(loc)}</span>` : ''}
           </div>
           <div class="event-tags">${tags}</div>
         </div>
@@ -1315,6 +1550,16 @@
       btn.classList.toggle('active', STATE.filters[g].includes(v));
     });
   }
+  function syncRangeChips() {
+    document.querySelectorAll('.range-chip').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.range || '') === (STATE.range || ''));
+    });
+  }
+  function syncViewTabs() {
+    document.querySelectorAll('.view-tabs button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === STATE.view);
+    });
+  }
 
   /* ---------- Overlays ---------- */
   function openOverlay(id) {
@@ -1335,6 +1580,7 @@
     closeOverlay('drawer');
     document.getElementById('scrim').classList.remove('open');
     STATE.currentEvent = null;
+    updateURL();
   }
 
   /* ---------- Toast ---------- */
@@ -1426,13 +1672,18 @@
   const DOW_LONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   function eventsOnDay(date) {
     const target = startOfDay(date).getTime();
-    return STATE.events.filter(e => {
-      if (e.recurring === 'true') return false;
-      if (!e._start) return false;
-      const s = startOfDay(e._start).getTime();
-      const en = startOfDay(toDate(e.end_date, e.end_time) || e._start).getTime();
-      return target >= s && target <= en;
-    }).sort((a,b) => (a._start || 0) - (b._start || 0));
+    return STATE.events
+      .filter(eventPassesFilters)
+      .filter(matchesSearch)
+      .filter(matchesRange)
+      .filter(e => {
+        if (e.recurring === 'true') return false;
+        if (!e._start) return false;
+        const s = startOfDay(e._start).getTime();
+        const en = startOfDay(toDate(e.end_date, e.end_time) || e._start).getTime();
+        return target >= s && target <= en;
+      })
+      .sort((a,b) => (a._start || 0) - (b._start || 0));
   }
   function openDaySheet(date) {
     const events = eventsOnDay(date);
@@ -1474,6 +1725,7 @@
     document.getElementById('sheet-footer').innerHTML = '';
 
     openOverlay('sheet');
+    updateURL();
   }
 
   /* ---------- Detail sheet ---------- */
@@ -1540,6 +1792,7 @@
     document.getElementById('btn-share-footer').addEventListener('click', shareCurrentEvent);
 
     openOverlay('sheet');
+    updateURL();
   }
 
   /* ---------- Event wiring ---------- */
@@ -1547,19 +1800,19 @@
     // View tabs
     document.querySelectorAll('.view-tabs button').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.view-tabs button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
         STATE.view = btn.dataset.view;
+        syncViewTabs();
         render();
       });
     });
 
-    // Today button — jumps to today's month in the Calendar view
+    // Today button — jumps to today in the current grid (Month or Week)
     document.getElementById('btn-today').addEventListener('click', () => {
       STATE.calCursor = new Date();
-      STATE.view = 'calendar';
-      document.querySelectorAll('.view-tabs button').forEach(b =>
-        b.classList.toggle('active', b.dataset.view === 'calendar'));
+      if (STATE.view !== 'calendar' && STATE.view !== 'week') {
+        STATE.view = 'calendar';
+        syncViewTabs();
+      }
       render();
     });
 
@@ -1606,6 +1859,43 @@
       searchInput.focus();
     });
 
+    // Range chips
+    document.querySelectorAll('.range-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const r = chip.dataset.range || '';
+        STATE.range = (STATE.range === r) ? '' : r;   // toggle off if already active
+        syncRangeChips();
+        // Range filter makes most sense in list views — snap to Upcoming if currently on a grid view
+        if (STATE.range && (STATE.view === 'calendar' || STATE.view === 'week')) {
+          STATE.view = 'upcoming';
+          syncViewTabs();
+        }
+        render();
+      });
+    });
+
+    // Swipe gestures on main content: month/week navigation
+    const SWIPE_MIN = 60, SWIPE_MAX_MS = 600, SWIPE_VERT_TOLERANCE = 0.5;
+    let touch = null;
+    mainEl.addEventListener('touchstart', (ev) => {
+      if (ev.touches.length !== 1) { touch = null; return; }
+      const t = ev.touches[0];
+      touch = { x: t.clientX, y: t.clientY, at: Date.now() };
+    }, { passive: true });
+    mainEl.addEventListener('touchend', (ev) => {
+      if (!touch) return;
+      const t = ev.changedTouches[0];
+      const dx = t.clientX - touch.x;
+      const dy = t.clientY - touch.y;
+      const dt = Date.now() - touch.at;
+      touch = null;
+      if (dt > SWIPE_MAX_MS) return;
+      if (Math.abs(dx) < SWIPE_MIN) return;
+      if (Math.abs(dy) > Math.abs(dx) * SWIPE_VERT_TOLERANCE) return;
+      if (STATE.view === 'calendar') stepMonth(dx < 0 ? 1 : -1);
+      else if (STATE.view === 'week') stepWeek(dx < 0 ? 1 : -1);
+    }, { passive: true });
+
     // Delegate: event card / calendar cell taps
     const mainEl = document.getElementById('main');
     const handleCalCell = (cell) => {
@@ -1633,10 +1923,24 @@
 
   /* ---------- Init ---------- */
   (async function init() {
+    const urlBits = applyURLToState();
     await loadData();
     buildFilters();
     wire();
+    // Reflect restored state in the UI
+    document.getElementById('search-input').value = STATE.search || '';
+    document.getElementById('search-clear').classList.toggle('show', !!STATE.search);
+    syncRangeChips();
+    syncViewTabs();
     render();
+    // Open event detail if ?event=ID was in the URL
+    if (urlBits.eventId) {
+      const e = STATE.events.find(x => String(x.id) === urlBits.eventId);
+      if (e) openSheet(e.id);
+    } else if (urlBits.dayISO && /^\d{4}-\d{2}-\d{2}$/.test(urlBits.dayISO)) {
+      const [y,mo,da] = urlBits.dayISO.split('-').map(Number);
+      openDaySheet(new Date(y, mo-1, da));
+    }
   })();
 </script>
 </body>
