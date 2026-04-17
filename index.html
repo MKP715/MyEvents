@@ -329,7 +329,7 @@
     font-size: 1.3rem;
     color: var(--event-color, var(--primary));
   }
-  .event-body { flex: 1; min-width: 0; }
+  .event-body { flex: 1; min-width: 0; padding-right: 34px; }
   .event-title {
     font-weight: 600;
     font-size: 1rem;
@@ -367,6 +367,43 @@
   }
   .tag.tentative { background: rgba(245,158,11,.15); color: var(--warning); }
   .tag.private { background: rgba(100,116,139,.2); color: var(--text-muted); }
+
+  /* ---------- Star / favorite button ---------- */
+  .fav-btn {
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 34px; height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--text-muted);
+    transition: color .15s, background .15s, transform .12s;
+  }
+  .fav-btn:hover, .fav-btn:active { background: var(--surface-alt); transform: scale(1.08); }
+  .fav-btn svg { width: 18px; height: 18px; }
+  .fav-btn.active { color: #f59e0b; }
+
+  /* ---------- Live / starting-soon badge ---------- */
+  .live-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+  }
+  .live-badge.now {
+    background: var(--danger); color: #fff;
+    animation: pulseNow 1.8s ease-in-out infinite;
+  }
+  .live-badge.soon { background: rgba(245,158,11,.18); color: var(--warning); }
+  @keyframes pulseNow {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
   .private-note {
     font-style: italic;
     color: var(--text-muted);
@@ -676,14 +713,14 @@
   }
   .sheet-header h3 {
     font-size: 1.2rem;
-    margin: 0 90px 6px 0;
+    margin: 0 130px 6px 0;
     font-weight: 700;
     min-height: 1.4em;
   }
   .sheet-header .sub {
     font-size: 0.85rem;
     opacity: 0.9;
-    margin-right: 90px;
+    margin-right: 130px;
   }
   .sheet-actions {
     position: absolute;
@@ -763,6 +800,20 @@
   }
   .detail-row .val { flex: 1; word-break: break-word; }
   .detail-row .val a { word-break: break-all; }
+  .copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    margin-left: 6px;
+    color: var(--text-muted);
+    vertical-align: middle;
+    transition: background .12s, color .12s;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover, .copy-btn:active { background: var(--surface-alt); color: var(--primary); }
+  .copy-btn svg { width: 14px; height: 14px; }
 
   /* ---------- Desktop adjustments ---------- */
   @media (min-width: 720px) {
@@ -802,6 +853,25 @@
     }
     .sheet.open { transform: translate(-50%, 50%); }
   }
+
+  /* ---------- Print ---------- */
+  @media print {
+    body { background: #fff; color: #000; }
+    .topbar, .view-tabs, .search-bar, .drawer, .scrim, .sheet,
+    .fav-btn, .copy-btn, .cal-nav .icon-btn, .toast { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .event-card, .agenda-group, .cal-grid, .week-day {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      box-shadow: none !important;
+      border: 1px solid #ccc;
+    }
+    .event-card::before { background: #666 !important; }
+    .cal-event-pill, .tag.cat { background: #eee !important; color: #000 !important; border: 1px solid #999 !important; }
+    .cal-cell { border: 1px solid #ddd !important; }
+    a { color: #000; text-decoration: underline; }
+    .live-badge { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -831,6 +901,7 @@
     <button type="button" role="tab" data-view="upcoming">Upcoming</button>
     <button type="button" role="tab" data-view="recurring">Recurring</button>
     <button type="button" role="tab" data-view="all">All</button>
+    <button type="button" role="tab" data-view="starred">★ Starred</button>
   </nav>
 
   <div class="search-bar">
@@ -884,6 +955,9 @@
   <div class="sheet-header" id="sheet-head">
     <div class="handle"></div>
     <div class="sheet-actions">
+      <button type="button" id="sheet-fav" aria-label="Toggle starred" title="Starred">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </button>
       <button type="button" id="sheet-share" aria-label="Share event" title="Share">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
       </button>
@@ -921,6 +995,7 @@
     { name: 'Birthday',         color: '#D81B60', description: 'Group birthday celebrations' },
     { name: 'Training',         color: '#0277BD', description: 'Bootcamps and trainings' },
     { name: 'Roundup',          color: '#4527A0', description: 'Roundups' },
+    { name: 'Speaker',          color: '#00838F', description: 'Speaker meetings (story, steps, traditions, concepts, mix)' },
   ];
   const CATEGORY_COLOR = Object.fromEntries(CATEGORIES.map(c => [c.name, c.color]));
   const DEFAULT_COLOR = '#2E7D32';
@@ -936,12 +1011,33 @@
     range: '',
     loading: true,
     loadError: null,
+    favorites: new Set(),
   };
+
+  /* ---------- Favorites (localStorage) ---------- */
+  const FAVS_KEY = 'aa-events-favs:v1';
+  function loadFavorites() {
+    try {
+      const raw = localStorage.getItem(FAVS_KEY);
+      if (raw) STATE.favorites = new Set(JSON.parse(raw));
+    } catch (_) { /* storage may be disabled; run without persistence */ }
+  }
+  function saveFavorites() {
+    try { localStorage.setItem(FAVS_KEY, JSON.stringify([...STATE.favorites])); }
+    catch (_) {}
+  }
+  function isFavorite(e) { return STATE.favorites.has(String(e.id)); }
+  function toggleFavorite(id) {
+    const key = String(id);
+    if (STATE.favorites.has(key)) STATE.favorites.delete(key);
+    else STATE.favorites.add(key);
+    saveFavorites();
+  }
 
   /* ---------- URL state (deep links) ----------
      Shape: ?view=week&date=2026-04-19&q=foo&range=7&event=8
      `date` = calendar cursor (month for Month view, week-start for Week view). */
-  const VIEWS = ['calendar','week','upcoming','recurring','all'];
+  const VIEWS = ['calendar','week','upcoming','recurring','all','starred'];
   const RANGES = ['today','weekend','7','30'];
   function applyURLToState() {
     const p = new URLSearchParams(location.search);
@@ -1004,19 +1100,65 @@
       const res = await fetch(CSV_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const text = await res.text();
-      const parsed = parseCSV(text).map(e => {
+      const raw = parseCSV(text);
+      // Apply occurrence overrides on raw rows (pre-coercion) so blank boolean
+      // fields inherit from the template instead of masquerading as "false".
+      const { mergedRows, overriddenKeys } = mergeOverrides(raw);
+      const parsed = mergedRows.map(e => {
         const recurring = String(e.recurring || '').toLowerCase() === 'true' ? 'true' : 'false';
         const all_day  = String(e.all_day  || '').toLowerCase() === 'true' ? 'true' : 'false';
         const priv     = String(e.private  || '').toLowerCase() === 'true' ? 'true' : 'false';
         return { ...e, recurring, all_day, private: priv, _start: toDate(e.start_date, e.start_time) };
       });
-      const occurrences = expandRecurring(parsed);
+      // Drop expanded instances that have been replaced by an explicit override.
+      const occurrences = expandRecurring(parsed).filter(i =>
+        !overriddenKeys.has(`${i._recurring_origin}:${i.start_date}`)
+      );
       STATE.events = [...parsed, ...occurrences];
     } catch (err) {
       STATE.loadError = err.message;
     } finally {
       STATE.loading = false;
     }
+  }
+
+  /* ---------- Occurrence overrides ----------
+     A row with `override_of=<series id>` and a concrete `start_date` replaces the
+     matching expanded instance of that series. Blank fields inherit from the
+     template; non-blank fields override. Must run on RAW CSV rows so that
+     boolean coercion of blank fields doesn't act like an explicit override. */
+  function mergeOverrides(rawRows) {
+    const templatesById = new Map();
+    rawRows.forEach(r => {
+      if (String(r.recurring || '').toLowerCase() === 'true') templatesById.set(String(r.id), r);
+    });
+    const overriddenKeys = new Set();
+    const mergedRows = [];
+    rawRows.forEach(r => {
+      if (!r.override_of || !r.start_date) { mergedRows.push(r); return; }
+      const tpl = templatesById.get(String(r.override_of));
+      if (!tpl) {
+        console.warn(`override_of=${r.override_of} references an unknown series; row ${r.id} skipped`);
+        return; // drop the orphan — without a template it has no meaningful content
+      }
+      const merged = {};
+      const keys = new Set([...Object.keys(tpl), ...Object.keys(r)]);
+      keys.forEach(k => {
+        const v = r[k];
+        merged[k] = (v !== undefined && v !== '') ? v : (tpl[k] ?? '');
+      });
+      // These are always set by the override, not inherited from the template.
+      merged.id = r.id;
+      merged.recurring = 'false';
+      merged.recurrence_pattern = '';
+      merged.override_of = '';
+      merged.start_date = r.start_date;
+      merged.end_date = r.end_date || r.start_date;
+      merged._recurring_origin = tpl.id; // keeps the ↻ "part of series" marker
+      mergedRows.push(merged);
+      overriddenKeys.add(`${tpl.id}:${r.start_date}`);
+    });
+    return { mergedRows, overriddenKeys };
   }
 
   /* ---------- Helpers ---------- */
@@ -1051,38 +1193,60 @@
   }
   function parseRecurrencePattern(pattern) {
     const p = (pattern || '').toLowerCase();
-    const m = p.match(/(first|second|third|fourth|fifth|last)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)/);
-    if (!m) return null;
-    return { nth: ORDINALS[m[1]], dow: DAYS_OF_WEEK[m[2]] };
+    // Monthly: "<nth> <dow> [of every month]"   e.g. "Second Sunday of every month", "Last Saturday"
+    const monthly = p.match(/(first|second|third|fourth|fifth|last)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)/);
+    if (monthly) return { kind: 'monthly', nth: ORDINALS[monthly[1]], dow: DAYS_OF_WEEK[monthly[2]] };
+    // Weekly:  "every <dow>" or "weekly on <dow>"   e.g. "Every Tuesday", "Weekly on Monday"
+    const weekly = p.match(/\b(?:every|weekly on)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+    if (weekly) return { kind: 'weekly', dow: DAYS_OF_WEEK[weekly[1]] };
+    return null;
   }
   function expandRecurring(events) {
     const today = startOfDay(new Date());
-    const horizon = new Date(today); horizon.setFullYear(horizon.getFullYear() + 1);
+    const defaultHorizon = new Date(today); defaultHorizon.setFullYear(defaultHorizon.getFullYear() + 1);
     const instances = [];
     events.filter(e => e.recurring === 'true').forEach(e => {
       const rule = parseRecurrencePattern(e.recurrence_pattern);
       if (!rule) return;
       const [sh = 0, sm = 0] = (e.start_time || '00:00').split(':').map(Number);
-      const cursor = new Date(today.getFullYear(), today.getMonth(), 1);
-      while (cursor <= horizon) {
-        const d = nthWeekdayOfMonth(cursor.getFullYear(), cursor.getMonth(), rule.dow, rule.nth);
-        if (d) {
-          const start = new Date(d); start.setHours(sh, sm, 0, 0);
-          if (start >= today && start <= horizon) {
-            const iso = fmtISO(start);
-            instances.push({
-              ...e,
-              id: `${e.id}-${iso}`,
-              recurring: 'false',
-              _recurring_origin: e.id,
-              start_date: iso,
-              end_date: iso,
-              end_time: (e.end_time || ''),
-              _start: start,
-            });
-          }
+
+      // Bounds: explicit start_date/end_date on the template define the series window.
+      // Without them, fall back to the rolling today → +12-month horizon.
+      const boundStart = e.start_date ? toDate(e.start_date, '00:00') : today;
+      const boundEnd   = e.end_date   ? toDate(e.end_date,   '23:59') : defaultHorizon;
+      if (!boundStart || !boundEnd || boundEnd < boundStart) return;
+
+      const push = (d) => {
+        const start = new Date(d); start.setHours(sh, sm, 0, 0);
+        if (start < boundStart || start > boundEnd) return;
+        const iso = fmtISO(start);
+        instances.push({
+          ...e,
+          id: `${e.id}-${iso}`,
+          recurring: 'false',
+          _recurring_origin: e.id,
+          _auto_generated: true, // distinguishes expansions from manual overrides
+          start_date: iso,
+          end_date: iso,
+          end_time: (e.end_time || ''),
+          _start: start,
+        });
+      };
+
+      if (rule.kind === 'monthly') {
+        const cursor = new Date(boundStart.getFullYear(), boundStart.getMonth(), 1);
+        while (cursor <= boundEnd) {
+          const d = nthWeekdayOfMonth(cursor.getFullYear(), cursor.getMonth(), rule.dow, rule.nth);
+          if (d) push(d);
+          cursor.setMonth(cursor.getMonth() + 1);
         }
-        cursor.setMonth(cursor.getMonth() + 1);
+      } else if (rule.kind === 'weekly') {
+        const cursor = new Date(boundStart);
+        cursor.setDate(cursor.getDate() + ((rule.dow - cursor.getDay() + 7) % 7));
+        while (cursor <= boundEnd) {
+          push(cursor);
+          cursor.setDate(cursor.getDate() + 7);
+        }
       }
     });
     return instances;
@@ -1098,7 +1262,21 @@
     return m ? `${h12}:${String(m).padStart(2,'0')} ${p}` : `${h12}${p}`;
   }
   function fmtDateRange(e) {
-    if (e.recurring === 'true') return e.recurrence_pattern || 'Recurring';
+    if (e.recurring === 'true') {
+      const pattern = e.recurrence_pattern || 'Recurring';
+      // Bounded series (start_date + end_date) — append the window so users see when it runs.
+      if (e.start_date && e.end_date) {
+        const bs = toDate(e.start_date, '00:00');
+        const be = toDate(e.end_date, '00:00');
+        if (bs && be) {
+          const sameYear = bs.getFullYear() === be.getFullYear();
+          const bsStr = `${MONTHS[bs.getMonth()]} ${bs.getDate()}`;
+          const beStr = `${MONTHS[be.getMonth()]} ${be.getDate()}, ${be.getFullYear()}`;
+          return `${pattern} · ${sameYear ? bsStr : `${bsStr}, ${bs.getFullYear()}`} – ${beStr}`;
+        }
+      }
+      return pattern;
+    }
     const s = toDate(e.start_date, e.start_time);
     const en = toDate(e.end_date, e.end_time);
     if (!s) return '';
@@ -1115,7 +1293,40 @@
   }
   function uniq(arr) { return [...new Set(arr.filter(Boolean))]; }
   const isPrivate = (e) => e && e.private === 'true';
+  // Pull "Homegroup: X" out of notes so speaker meetings can show it as a dedicated field.
+  // Returns { homegroup, rest } where rest is the notes minus the homegroup line.
+  function splitHomegroup(notes) {
+    if (!notes) return { homegroup: '', rest: '' };
+    const lines = notes.split(/\r?\n|\s*\|\s*/); // support "a | b" single-line or multi-line
+    let homegroup = '';
+    const other = [];
+    for (const ln of lines) {
+      const m = ln.match(/^\s*homegroup\s*[:\-]\s*(.+?)\s*$/i);
+      if (m && !homegroup) homegroup = m[1];
+      else if (ln.trim()) other.push(ln.trim());
+    }
+    return { homegroup, rest: other.join(' · ') };
+  }
   const PRIVATE_NOTE = 'Private event — contact host for details';
+  // Inline copy-to-clipboard button used in the event detail sheet.
+  function copyBtn(value, label) {
+    return `<button type="button" class="copy-btn" data-copy="${escapeHtml(value)}" aria-label="Copy ${escapeHtml(label)}" title="Copy ${escapeHtml(label)}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    </button>`;
+  }
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Copied');
+    } catch (_) {
+      // Fallback for non-secure contexts
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showToast('Copied'); } catch (__) { showToast('Copy failed'); }
+      ta.remove();
+    }
+  }
   const FORMAT_ICONS = {
     'In-Person': '📍',
     'Virtual':   '💻',
@@ -1217,7 +1428,31 @@
     if (STATE.view === 'week')     return renderWeek(main, filtered);
     if (STATE.view === 'recurring') return renderList(main, filtered.filter(e => e.recurring === 'true'), 'recurring');
     if (STATE.view === 'all')       return renderList(main, filtered, 'all');
+    if (STATE.view === 'starred')   return renderStarred(main, filtered);
     return renderList(main, filtered.filter(e => e.recurring !== 'true' && e._start && e._start >= startOfDay(new Date())), 'upcoming');
+  }
+
+  function renderStarred(main, events) {
+    const starred = events.filter(e => isFavorite(e) && !e._auto_generated);
+    if (!starred.length) {
+      main.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <p><strong>No starred events yet</strong></p>
+        <p style="font-size:.85rem">Tap the ★ on any event to save it here.</p></div>`;
+      return;
+    }
+    // Sort: upcoming dated first (soonest), then recurring templates, then past.
+    const today = startOfDay(new Date());
+    const upcoming = starred.filter(e => e.recurring !== 'true' && e._start && e._start >= today).sort((a,b) => a._start - b._start);
+    const recurring = starred.filter(e => e.recurring === 'true');
+    const past = starred.filter(e => e.recurring !== 'true' && e._start && e._start < today).sort((a,b) => b._start - a._start);
+    const section = (label, items) => items.length
+      ? `<div class="agenda-group"><h2>${label} (${items.length})</h2>${items.map(eventCard).join('')}</div>` : '';
+    main.innerHTML = `<div class="agenda">
+      ${section('Upcoming', upcoming)}
+      ${section('Recurring', recurring)}
+      ${section('Past', past)}
+    </div>`;
   }
 
   function startOfWeek(d) {
@@ -1296,8 +1531,9 @@
 
   function renderSearchResults(main, events) {
     const q = STATE.search.trim();
-    // Hide recurring *instances* — the template already covers them
-    const cleaned = events.filter(e => !e._recurring_origin);
+    // Hide auto-generated instances — the template already covers them. Manual
+    // overrides (which also have _recurring_origin set) stay visible.
+    const cleaned = events.filter(e => !e._auto_generated);
     if (!cleaned.length) {
       main.innerHTML = `<div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1337,8 +1573,8 @@
       return;
     }
 
-    // Group dated events by month
-    const dated = events.filter(e => e._start).sort((a,b) => a._start - b._start);
+    // Group dated events by month. Skip recurring templates — their instances are already dated.
+    const dated = events.filter(e => e._start && e.recurring !== 'true').sort((a,b) => a._start - b._start);
     const recurring = events.filter(e => e.recurring === 'true');
     const groups = {};
     dated.forEach(e => {
@@ -1382,18 +1618,42 @@
       e.cost ? `<span class="tag">${escapeHtml(e.cost)}</span>` : '',
     ].filter(Boolean).join('');
 
+    const fav = isFavorite(e);
+    const liveBadge = liveStatusBadge(e);
     return `
       <article class="event-card" data-id="${escapeHtml(e.id)}" style="--event-color:${color}">
         <div class="event-date">${datePart}</div>
         <div class="event-body">
-          <div class="event-title">${escapeHtml(e.title)}</div>
+          <div class="event-title">${escapeHtml(e.title)}${liveBadge}</div>
           <div class="event-meta">
             <span>🕒 ${escapeHtml(when)}</span>
             ${loc ? `<span>${isPrivate(e) ? '🔒' : '📍'} ${escapeHtml(loc)}</span>` : ''}
           </div>
           <div class="event-tags">${tags}</div>
         </div>
+        <button type="button" class="fav-btn ${fav ? 'active' : ''}" data-fav="${escapeHtml(e.id)}"
+          aria-label="${fav ? 'Remove from starred' : 'Add to starred'}" aria-pressed="${fav}">
+          <svg viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </button>
       </article>`;
+  }
+
+  /* ---------- Live time status ----------
+     Returns a small inline HTML badge for events happening now or starting
+     within the next hour. Empty string otherwise. */
+  function liveStatusBadge(e) {
+    if (e.recurring === 'true' || !e._start) return '';
+    const now = Date.now();
+    const start = e._start.getTime();
+    const end = (toDate(e.end_date, e.end_time) || e._start).getTime();
+    if (now >= start && now <= end) {
+      return ' <span class="live-badge now">● Now</span>';
+    }
+    const minsUntil = Math.round((start - now) / 60000);
+    if (minsUntil > 0 && minsUntil <= 60) {
+      return ` <span class="live-badge soon">Starts in ${minsUntil}m</span>`;
+    }
+    return '';
   }
 
   function escapeHtml(s) {
@@ -1683,6 +1943,7 @@
     document.getElementById('sheet-sub').textContent =
       `${events.length} events`;
     document.getElementById('sheet-share').style.display = 'none';
+    document.getElementById('sheet-fav').style.display = 'none';
 
     const rows = events.map(e => {
       const color = colorFor(e.category);
@@ -1720,6 +1981,7 @@
     if (!e) return;
     STATE.currentEvent = e;
     document.getElementById('sheet-share').style.display = '';
+    document.getElementById('sheet-fav').style.display = '';
     const color = colorFor(e.category);
     document.getElementById('sheet-head').style.setProperty('--event-color', color);
     document.getElementById('sheet-title').textContent = e.title || '(Untitled)';
@@ -1740,34 +2002,37 @@
     const joinRow = priv
       ? null
       : (e.virtual_link
-          ? ['Join', `<a href="${escapeHtml(e.virtual_link)}" target="_blank" rel="noopener">${escapeHtml(e.virtual_platform || 'Open link')}</a>`]
+          ? ['Join', `<a href="${escapeHtml(e.virtual_link)}" target="_blank" rel="noopener">${escapeHtml(e.virtual_platform || 'Open link')}</a>${copyBtn(e.virtual_link, 'link')}`]
           : (e.virtual_platform ? ['Platform', escapeHtml(e.virtual_platform)] : null));
-    const meetingIdRow = priv ? null : (e.meeting_id ? ['Meeting ID', escapeHtml(e.meeting_id)] : null);
-    const passcodeRow  = priv ? null : (e.passcode   ? ['Passcode',   escapeHtml(e.passcode)]   : null);
+    const meetingIdRow = priv ? null : (e.meeting_id ? ['Meeting ID', `${escapeHtml(e.meeting_id)}${copyBtn(e.meeting_id, 'meeting ID')}`] : null);
+    const passcodeRow  = priv ? null : (e.passcode   ? ['Passcode',   `${escapeHtml(e.passcode)}${copyBtn(e.passcode, 'passcode')}`]   : null);
+
+    const { homegroup, rest: notesRest } = splitHomegroup(e.notes);
 
     const rows = [
       ['When', e._recurring_origin
           ? `${escapeHtml(fmtDateRange(e))} <span class="tag" style="margin-left:6px">↻ Recurring</span>`
           : (e.recurring === 'true'
-              ? escapeHtml(e.recurrence_pattern || 'Recurring')
+              ? escapeHtml(fmtDateRange(e))
               : `${escapeHtml(fmtDateRange(e))}${e.all_day === 'true' ? ' (all day)' : ''}`)],
       ['Format', `${FORMAT_ICONS[e.format]||''} ${escapeHtml(e.format || '—')}${priv ? ' <span class="tag private" style="margin-left:6px">🔒 Private</span>' : ''}`],
       ['Language', escapeHtml(e.language || '—')],
       whereRow,
+      homegroup ? ['Homegroup', escapeHtml(homegroup)] : null,
       joinRow,
       meetingIdRow,
       passcodeRow,
       e.cost       ? ['Cost', escapeHtml(e.cost)] : null,
       e.status     ? ['Status', escapeHtml(e.status)] : null,
       e.source_url ? ['Flyer', `<a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener">Open flyer / link</a>`] : null,
-      e.notes      ? ['Notes', escapeHtml(e.notes)] : null,
+      notesRest    ? ['Notes', escapeHtml(notesRest)] : null,
     ].filter(Boolean);
 
     document.getElementById('sheet-body').innerHTML = rows.map(([l,v]) =>
       `<div class="detail-row"><div class="lbl">${l}</div><div class="val">${v}</div></div>`
     ).join('');
 
-    const showICS = !!e._start;
+    const showICS = !!e._start && e.recurring !== 'true';
     document.getElementById('sheet-footer').innerHTML = `
       ${showICS ? '<button type="button" class="btn btn-ghost" id="btn-ics">Add to calendar</button>' : ''}
       <button type="button" class="btn btn-primary" id="btn-share-footer">Share</button>
@@ -1777,8 +2042,19 @@
     }
     document.getElementById('btn-share-footer').addEventListener('click', shareCurrentEvent);
 
+    syncSheetFav();
     openOverlay('sheet');
     updateURL();
+  }
+
+  function syncSheetFav() {
+    const btn = document.getElementById('sheet-fav');
+    if (!btn) return;
+    const on = STATE.currentEvent && isFavorite(STATE.currentEvent);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.style.display = STATE.currentEvent ? '' : 'none';
+    const svg = btn.querySelector('svg');
+    if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
   }
 
   /* ---------- Event wiring ---------- */
@@ -1814,6 +2090,12 @@
     document.getElementById('scrim').addEventListener('click', closeSheet);
     document.getElementById('sheet-close').addEventListener('click', closeSheet);
     document.getElementById('sheet-share').addEventListener('click', shareCurrentEvent);
+    document.getElementById('sheet-fav').addEventListener('click', () => {
+      if (!STATE.currentEvent) return;
+      toggleFavorite(STATE.currentEvent.id);
+      syncSheetFav();
+      render();
+    });
 
     // Filter drawer: changes are live-applied on chip click; Done just closes
     document.getElementById('btn-apply').addEventListener('click', () => {
@@ -1875,6 +2157,14 @@
     }, { passive: true });
 
     mainEl.addEventListener('click', (ev) => {
+      // Star button click shouldn't open the event sheet.
+      const fav = ev.target.closest('.fav-btn');
+      if (fav) {
+        ev.stopPropagation();
+        toggleFavorite(fav.dataset.fav);
+        render();
+        return;
+      }
       const card = ev.target.closest('.event-card');
       if (card) { openSheet(card.dataset.id); return; }
       const cell = ev.target.closest('.cal-cell.has-events');
@@ -1886,8 +2176,10 @@
       if (cell) { ev.preventDefault(); handleCalCell(cell); }
     });
 
-    // Delegate: tapping an event row inside the day sheet opens its detail
+    // Delegate inside the sheet body: copy buttons + day-sheet rows.
     document.getElementById('sheet-body').addEventListener('click', (ev) => {
+      const copy = ev.target.closest('.copy-btn');
+      if (copy) { ev.preventDefault(); ev.stopPropagation(); copyToClipboard(copy.dataset.copy); return; }
       const row = ev.target.closest('.day-event-row');
       if (row) openSheet(row.dataset.id);
     });
@@ -1896,6 +2188,7 @@
   /* ---------- Init ---------- */
   (async function init() {
     const urlBits = applyURLToState();
+    loadFavorites();
     render(); // paint the loading state immediately
     await loadData();
     buildFilters();
@@ -1913,6 +2206,15 @@
       const [y,mo,da] = urlBits.dayISO.split('-').map(Number);
       openDaySheet(new Date(y, mo-1, da));
     }
+
+    // Keep "Now" / "Starts in X min" badges accurate — re-render every minute
+    // but skip if a sheet is open so we don't interrupt the user.
+    setInterval(() => {
+      if (document.getElementById('sheet').classList.contains('open')) return;
+      if (document.getElementById('drawer').classList.contains('open')) return;
+      if (STATE.loading || STATE.loadError) return;
+      render();
+    }, 60 * 1000);
   })();
 </script>
 </body>
